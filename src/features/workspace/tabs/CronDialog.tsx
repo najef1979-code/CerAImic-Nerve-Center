@@ -154,6 +154,11 @@ export function CronDialog({ open, onClose, onSubmit, mode, initialData }: CronD
       return;
     }
 
+    if (payloadKind === 'agentTurn' && deliveryMode === 'announce' && availableChannels.length > 0 && !deliveryChannel) {
+      setError('Select a delivery channel or switch to "Run silently"');
+      return;
+    }
+
     // Build schedule
     let schedule: Record<string, unknown>;
     if (scheduleKind === 'cron') {

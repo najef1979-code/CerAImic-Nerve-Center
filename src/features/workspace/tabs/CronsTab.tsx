@@ -107,9 +107,12 @@ function CronRow({ job, onToggle, onRun, onDelete, onEdit, onFetchRuns }: {
   const name = job.name || job.label || job.id;
   const isSuccess = job.lastStatus === 'success' || job.lastStatus === 'ok' || job.lastStatus === 'finished';
   // Detect delivery-only failures: task ran but delivery failed
-  const isDeliveryFailure = !isSuccess && job.lastError?.includes('Channel is required')
-    || (!isSuccess && job.lastDeliveryStatus === 'error' && job.lastError?.includes('channel'))
-    || (!isSuccess && job.lastError?.includes('delivery'));
+  const errorLower = job.lastError?.toLowerCase() ?? '';
+  const isDeliveryFailure = !isSuccess && (
+    errorLower.includes('channel is required')
+    || (job.lastDeliveryStatus === 'error' && errorLower.includes('channel'))
+    || errorLower.includes('delivery')
+  );
   const taskSucceeded = isSuccess || isDeliveryFailure;
 
   return (
