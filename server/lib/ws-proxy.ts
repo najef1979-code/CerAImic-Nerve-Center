@@ -144,7 +144,7 @@ export function setupWebSocketProxy(server: HttpServer | HttpsServer): void {
     const scheme = isEncrypted ? 'https' : 'http';
     const clientOrigin = req.headers.origin || `${scheme}://${req.headers.host}`;
 
-    createGatewayRelay(clientWs, targetUrl, clientOrigin, connId);
+    createGatewayRelay(clientWs, targetUrl, clientOrigin);
   });
 }
 
@@ -164,7 +164,6 @@ function createGatewayRelay(
   clientWs: WebSocket,
   targetUrl: URL,
   clientOrigin: string,
-  _connId?: string,
 ): void {
   let gwWs: WebSocket;
   let challengeNonce: string | null = null;
