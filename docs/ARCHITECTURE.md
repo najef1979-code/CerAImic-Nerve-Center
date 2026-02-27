@@ -65,7 +65,7 @@ All global state flows through four React contexts, nested in dependency order:
 | **GatewayContext** | `src/contexts/GatewayContext.tsx` | WebSocket connection lifecycle, RPC method calls, event fan-out via pub/sub pattern, model/thinking status polling, activity sparkline |
 | **SettingsContext** | `src/contexts/SettingsContext.tsx` | Sound, TTS provider/model, wake word, panel ratio, theme, font, telemetry/events visibility. Persists to `localStorage` |
 | **SessionContext** | `src/contexts/SessionContext.tsx` | Session list (via gateway RPC), granular agent status tracking (IDLE/THINKING/STREAMING/DONE/ERROR), busy state derivation, unread session tracking, agent log, event log, session CRUD (delete, spawn, rename, abort) |
-| **ChatContext** | `src/contexts/ChatContext.tsx` | Chat messages, streaming state, processing stage indicator, activity log (tool calls), send/abort/reset, infinite scroll history, TTS voice fallback |
+| **ChatContext** | `src/contexts/ChatContext.tsx` | Thin orchestrator composing 4 hooks: `useChatMessages` (CRUD, history, scroll), `useChatStreaming` (deltas, processing stage, activity log), `useChatRecovery` (reconnect, retry, gap detection), `useChatTTS` (playback, voice fallback, sound feedback) |
 
 **Data flow pattern:** Contexts subscribe to gateway events via `GatewayContext.subscribe()`. The `SessionContext` listens for `agent` and `chat` events to update granular status. The `ChatContext` listens for streaming deltas and lifecycle events to render real-time responses.
 

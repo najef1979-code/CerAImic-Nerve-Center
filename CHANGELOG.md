@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.1] — 2026-02-27
+
+### Added
+- Update-available badge in status bar with server-side version check (PR #31)
+- Cron UX rework: "When done" framing, auto-detected channels, context-aware placeholders (PR #32)
+- WS proxy and SSE connections tagged with unique IDs for structured logging
+- WS keepalive pings (30s) prevent silent connection drops during idle
+- Connection close logs include duration and message counts
+- Installer detects port conflicts before writing config (closes #38)
+
+### Fixed
+- Gateway token removed as login password, login-only scrypt hash (PR #33)
+- Login rate limit tightened to 5 req/min (PR #33)
+- Server refuses to start network-exposed without auth (PR #33)
+- WS proxy path/port validation prevents proxying to arbitrary hosts (PR #33)
+- TTS fallback now works for non-Latin scripts (PR #33)
+- WS proxy challenge-nonce timing race causing failed device identity injection
+- Config mutations via typed updateConfig() instead of unsafe direct writes
+- ChatContext render loops from unmemoized hook return values
+- AudioContext singleton prevents competing audio contexts during voice input
+- STT sync race where recognition started before audio context was ready
+- Gateway reconnect no longer killed by stale keepalive state
+- Installer traps for cleanup, build rollback on failure
+- Cron delivery-only failures show warning instead of error (PR #32)
+
+### Changed
+- ChatContext split into 4 composable hooks (useChatMessages, useChatStreaming, useChatRecovery, useChatTTS)
+- Normalized config references across .env.example, README, and CONFIGURATION.md
+
+---
+
 ## [1.4.0] — 2026-02-26
 
 ### Added
