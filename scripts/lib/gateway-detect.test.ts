@@ -180,6 +180,28 @@ describe('gateway detection and repair', () => {
     });
   });
 
+  it('detects a systemd-only runtime token even when openclaw.json is missing', async () => {
+    process.env.OPENCLAW_GATEWAY_TOKEN = 'stale-shell-token';
+    rmSync(path.join(tempHome, '.openclaw', 'openclaw.json'));
+    mkdirSync(path.join(tempHome, '.config', 'systemd', 'user'), { recursive: true });
+    writeFileSync(
+      path.join(tempHome, '.config', 'systemd', 'user', 'openclaw-gateway.service'),
+      '[Service]\nEnvironment=OPENCLAW_GATEWAY_TOKEN=real-systemd-token\n',
+    );
+
+    const { mod } = await importGatewayDetect();
+    const detected = mod.detectGatewayConfig();
+
+    expect(detected.token).toBe('real-systemd-token');
+    expect(mod.chooseSetupGatewayToken({
+      envToken: mod.getEnvGatewayToken(),
+      detectedToken: detected.token,
+    })).toEqual({
+      token: 'real-systemd-token',
+      source: 'detected',
+    });
+  });
+
   it('approves only the pending request that matches Nerve and leaves unrelated requests untouched', async () => {
     const execSyncMock = vi.fn((command: string) => {
       if (command.includes('devices list --json')) {
@@ -241,6 +263,35 @@ describe('gateway detection and repair', () => {
               displayName: 'Nerve UI',
             },
           ],
+        }));
+      }
+
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    const { mod } = await importGatewayDetect();
+    const result = mod.approvePendingNerveDevice({
+      exec: execSyncMock as typeof import('node:child_process').execSync,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.approved).toBe(0);
+    expect(result.message.toLowerCase()).toContain('manual');
+    expect(execSyncMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('openclaw devices approve'),
+      expect.anything(),
+    );
+  });
+
+  it('fails closed when devices list returns parseable JSON with an unusable pending shape', async () => {
+    const execSyncMock = vi.fn((command: string) => {
+      if (command.includes('devices list --json')) {
+        return Buffer.from(JSON.stringify({
+          pending: {
+            requestId: 'req-nerve',
+            deviceId: 'nerve-device',
+            publicKey: 'nerve-public-key',
+          },
         }));
       }
 

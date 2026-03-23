@@ -51,6 +51,13 @@ export interface GatewayTokenChoice {
 export function detectGatewayConfig(): DetectedGateway {
   const result: DetectedGateway = { token: null, url: null };
 
+  // The gateway process prefers the systemd env var over the config file token,
+  // so detect it first even when openclaw.json is absent or broken.
+  const systemdToken = readSystemdGatewayToken();
+  if (systemdToken) {
+    result.token = systemdToken;
+  }
+
   if (!existsSync(OPENCLAW_CONFIG)) {
     return result;
   }
@@ -59,13 +66,7 @@ export function detectGatewayConfig(): DetectedGateway {
     const raw = readFileSync(OPENCLAW_CONFIG, 'utf-8');
     const config = JSON.parse(raw) as OpenClawConfig;
 
-    // Extract token — systemd env var takes priority over config file because
-    // the gateway process uses the env var when both exist (known 2026.2.19 bug:
-    // onboard writes different tokens to the service file and openclaw.json).
-    const systemdToken = readSystemdGatewayToken();
-    if (systemdToken) {
-      result.token = systemdToken;
-    } else if (config.gateway?.auth?.token) {
+    if (!result.token && config.gateway?.auth?.token) {
       result.token = config.gateway.auth.token;
     }
 
@@ -73,7 +74,7 @@ export function detectGatewayConfig(): DetectedGateway {
     const port = config.gateway?.port || 18789;
     result.url = `http://127.0.0.1:${port}`;
   } catch {
-    // Config exists but can't be parsed — return nulls
+    // Config exists but can't be parsed — keep any detected token and return null URL
   }
 
   return result;
@@ -528,7 +529,14 @@ export function approvePendingNerveDevice(deps: {
     let pendingItems: PendingDeviceRequest[] = [];
     try {
       const parsed = JSON.parse(listOutput);
-      pendingItems = Array.isArray(parsed?.pending) ? parsed.pending : [];
+      if (!Array.isArray(parsed?.pending)) {
+        return {
+          ok: false,
+          approved: 0,
+          message: 'Could not safely inspect pending requests, approve Nerve manually with `openclaw devices list`',
+        };
+      }
+      pendingItems = parsed.pending;
     } catch {
       return {
         ok: false,
