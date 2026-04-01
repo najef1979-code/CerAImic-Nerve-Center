@@ -18,6 +18,7 @@ import {
   MessageSquare,
   LayoutGrid,
   Database,
+  FolderOpen,
 } from "lucide-react";
 import type { ViewMode } from "@/features/command-palette/commands";
 import type { AgentLogEntry, EventEntry, TokenData } from "@/types";
@@ -34,11 +35,7 @@ const TokenUsage = lazy(() =>
     default: m.TokenUsage,
   })),
 );
-const BackupsPanel = lazy(() =>
-  import("@/features/backups").then((m) => ({
-    default: m.BackupsPanel,
-  })),
-);
+
 
 /** Identifies which dropdown panel is currently open, or `null` for none. */
 type PanelId =
@@ -47,7 +44,6 @@ type PanelId =
   | "events"
   | "sessions"
   | "workspace"
-  | "backups"
   | null;
 
 type PanelConfig = {
@@ -66,11 +62,6 @@ const PANEL_CONFIG: Record<Exclude<PanelId, null> | "default", PanelConfig> = {
     boxClass: "w-[600px] max-w-[calc(100vw-1.067rem)]",
     heightClass: "max-h-[75vh] opacity-100",
     contentClass: "h-[70vh] max-h-[70vh] overflow-hidden",
-  },
-  backups: {
-    boxClass: "w-[480px] max-w-[calc(100vw-1.067rem)]",
-    heightClass: "max-h-[500px] opacity-100",
-    contentClass: "h-[460px] max-h-[460px] overflow-hidden",
   },
   "agent-log": {
     boxClass: "w-[480px] max-w-[calc(100vw-1.067rem)]",
@@ -273,6 +264,17 @@ export function TopBar({
               <span>Chat</span>
             </button>
             <button
+              onClick={() => onViewModeChange("backups")}
+              title="Backups View"
+              aria-label="Switch to backups view"
+              aria-pressed={viewMode === "backups"}
+              data-active={viewMode === "backups"}
+              className="shell-chip min-h-11 flex-1 justify-center text-[0.733rem] uppercase tracking-[0.14em] max-[371px]:min-h-[38px] max-[371px]:gap-1 max-[371px]:px-2 max-[371px]:text-[0.667rem] max-[371px]:tracking-[0.08em] max-[371px]:[&_svg]:size-3 sm:min-h-10 sm:flex-none"
+            >
+              <FolderOpen size={13} aria-hidden="true" />
+              <span>Backups</span>
+            </button>
+            <button
               onClick={() => onViewModeChange("kanban")}
               title="Tasks View"
               aria-label="Switch to tasks view"
@@ -387,21 +389,6 @@ export function TopBar({
             )}
           </button>
 
-          {/* Backups button */}
-          <button
-            onClick={() => togglePanel("backups")}
-            title="Backups"
-            aria-label="Toggle backups panel"
-            aria-expanded={visiblePanel === "backups"}
-            aria-haspopup="true"
-            aria-controls="topbar-panel"
-            data-active={visiblePanel === "backups"}
-            className={buttonBase}
-          >
-            <Database size={14} aria-hidden="true" />
-            <span className="hidden sm:inline">Backups</span>
-          </button>
-
           {/* Settings button */}
           <button
             onClick={onSettings}
@@ -437,7 +424,6 @@ export function TopBar({
             {visiblePanel === "usage" && <TokenUsage data={tokenData} />}
             {visiblePanel === "sessions" && sessionsPanel}
             {visiblePanel === "workspace" && workspacePanel}
-            {visiblePanel === "backups" && <BackupsPanel />}
           </Suspense>
         </div>
       </div>

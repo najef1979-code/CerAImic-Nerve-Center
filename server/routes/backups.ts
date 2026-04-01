@@ -1,28 +1,24 @@
 /**
- * GET /api/backups — List available backups
+ * GET /api/backups — List available backups + status
  * GET /api/backups/:name — Download a specific backup archive
  * DELETE /api/backups/:name — Delete a specific backup archive
  */
 
 import { Hono } from 'hono';
-import { statSync, readFileSync, unlinkSync, createReadStream } from 'node:fs';
+import { statSync, createReadStream } from 'node:fs';
 import { join, basename } from 'node:path';
-import { pipeline } from 'node:stream';
-import { Readable } from 'node:stream';
-import { finished } from 'node:stream/consumers';
-import { createWriteStream } from 'node:fs';
-import { readdirSync } from 'node:fs';
-import { rmSync } from 'node:fs';
+import { readdirSync, rmSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 
 const app = new Hono();
 
-// Backup directories to scan (configurable via env)
 function getBackupDirs(): { name: string; path: string }[] {
-  const memoryBackups = join(process.env.HOME || '/home/najef', '.openclaw', 'workspace', 'memory_backups');
-  const archiveDir = join(process.env.HOME || '/home/najef', '.openclaw', 'workspace', '.openclaw-backup-archive');
+  const home = process.env.HOME || '/home/najef';
   return [
-    { name: 'Memory Backups', path: memoryBackups },
-    { name: 'Full Archive', path: archiveDir },
+    { name: 'Local Backups', path: join(home, 'Backups') },
+    { name: 'Memory Backups', path: join(home, '.openclaw', 'workspace', 'memory_backups') },
+    { name: 'Full Archive', path: join(home, '.openclaw', 'workspace', '.openclaw-backup-archive') },
+    { name: 'NAS Cache', path: join(home, 'Backups', 'nas-sync') },
   ];
 }
 
@@ -36,6 +32,13 @@ interface BackupEntry {
 }
 
 function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)}GB`;
+}
+
+function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
@@ -60,14 +63,40 @@ function scanBackupDir(name: string, dirPath: string): BackupEntry[] {
             type: name,
           });
         } catch { /* skip unreadable */ }
-      } else if (file.isDirectory()) {
-        // Recurse into subdirectories
+      } else if (file.isDirectory() && !file.name.startsWith('.')) {
         const subEntries = scanBackupDir(name, join(dirPath, file.name));
         entries.push(...subEntries);
       }
     }
-  } catch { /* dir doesn't exist or not readable */ }
+  } catch { /* dir doesn't exist */ }
   return entries;
+}
+
+interface CronEntry {
+  time: string;
+  frequency: string;
+  script: string;
+  purpose: string;
+}
+
+function getCrontab(): CronEntry[] {
+  try {
+    const output = execSync('crontab -l 2>/dev/null || true', { encoding: 'utf8' });
+    const entries: CronEntry[] = [];
+    if (output.includes('backup-openclaw-native')) {
+      entries.push({ time: '01:00 CET', frequency: 'Daily', script: 'backup-openclaw-native.sh', purpose: 'Local verified backup' });
+    }
+    if (output.includes('backup-openclaw-to-nas')) {
+      entries.push({ time: '01:30 CET', frequency: 'Daily', script: 'backup-openclaw-to-nas.sh', purpose: 'Offsite backup to NAS' });
+    }
+    if (output.includes('backup_memory_to_nas')) {
+      entries.push({ time: '02:00 CET', frequency: 'Daily', script: 'backup_memory_to_nas.sh', purpose: 'Memory backups to NAS' });
+    }
+    if (output.includes('backup-watchdog')) {
+      entries.push({ time: 'Every 30min', frequency: 'Watchdog', script: 'backup-watchdog.sh', purpose: 'Watchdog monitoring' });
+    }
+    return entries;
+  } catch { return []; }
 }
 
 app.get('/', async (c) => {
@@ -77,9 +106,58 @@ app.get('/', async (c) => {
     const entries = scanBackupDir(dir.name, dir.path);
     allEntries.push(...entries);
   }
-  // Sort by modified date, newest first
   allEntries.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
-  return c.json({ backups: allEntries, total: allEntries.length });
+
+  const localFiles = allEntries.filter(b => b.type === 'Local Backups');
+  const memoryFiles = allEntries.filter(b => b.type === 'Memory Backups');
+  const archiveFiles = allEntries.filter(b => b.type === 'Full Archive');
+  const nasFiles = allEntries.filter(b => b.type === 'NAS Cache');
+  const totalSize = allEntries.reduce((sum, b) => sum + b.size, 0);
+
+  return c.json({
+    backups: allEntries,
+    total: allEntries.length,
+    local: {
+      backupDir: '~/Backups',
+      backups: localFiles,
+      totalSpace: formatBytes(localFiles.reduce((sum, b) => sum + b.size, 0)),
+      count: localFiles.length,
+      lastBackup: localFiles[0]?.modified || null,
+      type: 'Local',
+      purpose: 'Local verified backups',
+    },
+    memory: {
+      backupDir: '~/.openclaw/workspace/memory_backups',
+      backups: memoryFiles,
+      totalSpace: formatBytes(memoryFiles.reduce((sum, b) => sum + b.size, 0)),
+      count: memoryFiles.length,
+      lastBackup: memoryFiles[0]?.modified || null,
+      type: 'Memory Snapshots',
+      purpose: 'Daily memory snapshots',
+    },
+    archive: {
+      backupDir: '~/.openclaw/workspace/.openclaw-backup-archive',
+      backups: archiveFiles,
+      totalSpace: formatBytes(archiveFiles.reduce((sum, b) => sum + b.size, 0)),
+      count: archiveFiles.length,
+      lastBackup: archiveFiles[0]?.modified || null,
+      type: 'Full Archive',
+      purpose: 'Complete OpenClaw state',
+    },
+    nas: {
+      backupDir: '~/Backups/nas-sync',
+      backups: nasFiles,
+      totalSpace: formatBytes(nasFiles.reduce((sum, b) => sum + b.size, 0)),
+      count: nasFiles.length,
+      lastBackup: nasFiles[0]?.modified || null,
+      type: 'NAS Cache',
+      purpose: 'Offsite NAS sync cache',
+    },
+    schedule: getCrontab(),
+    backupCount: allEntries.length,
+    totalSpace: formatBytes(totalSize),
+    hasBackups: allEntries.length > 0,
+  });
 });
 
 app.get('/:name', async (c) => {
