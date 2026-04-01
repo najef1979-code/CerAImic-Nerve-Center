@@ -8,18 +8,15 @@ import { useState, useEffect } from 'react';
 import { HardDrive, Server, Database, Github, Calendar, RefreshCw, ExternalLink, AlertTriangle, Check, X, Shield } from 'lucide-react';
 
 interface BackupEnvConfig {
-  // Local
   BACKUP_LOCAL_ENABLED: boolean;
   BACKUP_LOCAL_DIR: string;
   BACKUP_RETENTION_DAYS: number;
   BACKUP_LOCAL_SCHEDULE: string;
-  // NAS
   BACKUP_NAS_ENABLED: boolean;
   BACKUP_NAS_HOST: string;
   BACKUP_NAS_USER: string;
-  BACKUP_NAS_PATH: string;
+  BACKUP_NAS_BACKUP_PATH: string;
   BACKUP_NAS_RETENTION_DAYS: number;
-  // GitHub
   BACKUP_GITHUB_ENABLED: boolean;
   BACKUP_GITHUB_REPO: string;
   BACKUP_GITHUB_BRANCH: string;
@@ -34,7 +31,7 @@ const DEFAULT_CONFIG: BackupEnvConfig = {
   BACKUP_NAS_ENABLED: false,
   BACKUP_NAS_HOST: '',
   BACKUP_NAS_USER: '',
-  BACKUP_NAS_PATH: '',
+  BACKUP_NAS_BACKUP_PATH: '',
   BACKUP_NAS_RETENTION_DAYS: 30,
   BACKUP_GITHUB_ENABLED: false,
   BACKUP_GITHUB_REPO: '',
@@ -79,7 +76,8 @@ export function BackupsSettings() {
       const resp = await fetch('/api/backups/config');
       if (resp.ok) {
         const data = await resp.json();
-        setConfig({ ...DEFAULT_CONFIG, ...data });
+        const { BACKUP_NAS_PASSWORD, ...rest } = data;
+        setConfig({ ...DEFAULT_CONFIG, ...rest });
       }
     } catch { /* ignore */ }
     setLoading(false);
@@ -196,7 +194,7 @@ export function BackupsSettings() {
           <SettingRow
             label="NAS User"
             value={config.BACKUP_NAS_USER || 'not configured'}
-            description="SSH username for rsync authentication"
+            description="SSH username (key-based auth — no password needed)"
           />
           <SettingRow
             label="NAS Retention"
