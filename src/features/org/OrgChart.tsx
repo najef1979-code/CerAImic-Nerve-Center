@@ -113,7 +113,7 @@ function AgentNode({
   agent: Agent;
   x: number;
   y: number;
-  status: 'active' | 'offline';
+  status: AgentActivityStatus;
 }) {
   const imgSrc = `${IMAGE_FOLDER}${agent.id}.png`;
   const [imgError, setImgError] = useState(false);

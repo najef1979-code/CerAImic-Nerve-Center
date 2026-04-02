@@ -21,7 +21,7 @@ The Org Chart displays the agent hierarchy in a visual tree diagram. It shows:
 ### 1. Agent Photos (Optional)
 
 Photos are stored in:
-```
+```text
 Nerve-CerAImic/public/org/agents/
 ```
 
@@ -85,7 +85,7 @@ Border colors are assigned based on level and role.
 
 ## File Structure
 
-```
+```text
 Nerve-CerAImic/
 ├── public/
 │   └── org/
@@ -186,8 +186,10 @@ Colors are read from CSS variables on the `:root` element. No hardcoded theme co
 ```bash
 cd Nerve-CerAImic
 npm run dev
-# Visit http://127.0.0.1:3080/org
+# Visit http://127.0.0.1:3080
 ```
+
+Then switch to Org view using the TopBar view mode selector.
 
 ## Troubleshooting
 

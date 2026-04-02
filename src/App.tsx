@@ -307,11 +307,11 @@ export default function App({ onLogout }: AppProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [spawnDialogOpen, setSpawnDialogOpen] = useState(false);
 
-  // View mode state (chat | kanban), persisted to localStorage
+  // View mode state (chat | kanban | backups | org), persisted to localStorage
   const [viewMode, setViewModeRaw] = useState<ViewMode>(() => {
     try {
       const saved = localStorage.getItem('nerve:viewMode');
-      if (saved === 'kanban') return 'kanban';
+      if (saved === 'kanban' || saved === 'backups' || saved === 'org') return saved;
     } catch { /* ignore */ }
     return 'chat';
   });
@@ -938,11 +938,11 @@ export default function App({ onLogout }: AppProps) {
           </div>
         )}
         {isCompactLayout ? (
-          <div className={`shell-panel flex-1 min-w-0 min-h-0 overflow-hidden rounded-[28px] boot-panel${viewMode === 'kanban' ? ' hidden' : ''}`}>
+          <div className={`shell-panel flex-1 min-w-0 min-h-0 overflow-hidden rounded-[28px] boot-panel${viewMode === 'kanban' || viewMode === 'backups' || viewMode === 'org' ? ' hidden' : ''}`}>
             {chatContent}
           </div>
         ) : (
-          <div style={{ display: viewMode === 'kanban' ? 'none' : 'contents' }}>
+          <div style={{ display: viewMode === 'kanban' || viewMode === 'backups' || viewMode === 'org' ? 'none' : 'contents' }}>
             <ResizablePanels
               leftPercent={panelRatio}
               onResize={setPanelRatio}
