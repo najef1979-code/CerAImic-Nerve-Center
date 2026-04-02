@@ -275,6 +275,17 @@ export function TopBar({
               <span>Backups</span>
             </button>
             <button
+              onClick={() => onViewModeChange("org")}
+              title="Org Chart View"
+              aria-label="Switch to org chart view"
+              aria-pressed={viewMode === "org"}
+              data-active={viewMode === "org"}
+              className="shell-chip min-h-11 flex-1 justify-center text-[0.733rem] uppercase tracking-[0.14em] max-[371px]:min-h-[38px] max-[371px]:gap-1 max-[371px]:px-2 max-[371px]:text-[0.667rem] max-[371px]:tracking-[0.08em] max-[371px]:[&_svg]:size-3 sm:min-h-10 sm:flex-none"
+            >
+              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx={12} cy={5} r={3}/><circle cx={5} cy={19} r={3}/><circle cx={19} cy={19} r={3}/><line x1={12} y1={8} x2={5} y2={16}/><line x1={12} y1={8} x2={19} y2={16}/></svg>
+              <span>Org</span>
+            </button>
+            <button
               onClick={() => onViewModeChange("kanban")}
               title="Tasks View"
               aria-label="Switch to tasks view"
