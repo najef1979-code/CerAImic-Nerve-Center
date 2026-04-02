@@ -168,14 +168,12 @@ export function BackupsPanel() {
     return new Date(section.lastBackup) > new Date(Date.now() - 24 * 60 * 60 * 1000);
   };
 
-  // Overall health: both configured backups ran today (within 24h)
+  // Overall health: both configured backups ran within 24h
   const overallHealthy = useMemo(() => {
     if (!data) return true;
-    const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
-    const hasLocalToday = data.local.backups.some(b => b.modified.slice(0, 10) === todayStr);
-    const hasNasToday = data.nas.backups.some(b => b.modified.slice(0, 10) === todayStr);
-    return hasLocalToday && hasNasToday;
+    const localOk = isOk(data.local);
+    const nasOk = isOk(data.nas);
+    return localOk && nasOk;
   }, [data]);
 
   if (loading) {
