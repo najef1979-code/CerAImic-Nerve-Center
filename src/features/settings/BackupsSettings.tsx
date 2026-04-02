@@ -76,7 +76,7 @@ export function BackupsSettings() {
       const resp = await fetch('/api/backups/config');
       if (resp.ok) {
         const data = await resp.json();
-        const { BACKUP_NAS_PASSWORD, ...rest } = data;
+        const { BACKUP_NAS_PASSWORD_SET, ...rest } = data;
         setConfig({ ...DEFAULT_CONFIG, ...rest });
       }
     } catch { /* ignore */ }
@@ -187,7 +187,7 @@ export function BackupsSettings() {
           />
           <SettingRow
             label="NAS Path"
-            value={config.BACKUP_NAS_PATH || 'not configured'}
+            value={config.BACKUP_NAS_BACKUP_PATH || 'not configured'}
             isPath
             description="Absolute path on the NAS where backups are stored"
           />

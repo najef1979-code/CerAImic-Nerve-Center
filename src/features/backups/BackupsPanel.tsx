@@ -281,7 +281,6 @@ export function BackupsPanel() {
               {isOk(currentSection) ? '● Healthy' : '● Unhealthy'}
             </span>
             <span>Last: <span className="text-foreground font-medium">{formatRelative(currentSection.lastBackup)}</span></span>
-            <span>Last: <span className="text-foreground font-medium">{formatRelative(currentSection.lastBackup)}</span></span>
             <span>·</span>
             <span>{currentSection.purpose}</span>
             <span>·</span>

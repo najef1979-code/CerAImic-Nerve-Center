@@ -7,9 +7,11 @@
 
 import { Hono } from 'hono';
 import { statSync, createReadStream, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { Readable } from 'node:stream';
 import { join, basename } from 'node:path';
 import { readdirSync, rmSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
+import { CronExpressionParser } from 'cron-parser';
 
 const app = new Hono();
 
@@ -20,6 +22,14 @@ const STATUS_FILE = join(HOME, 'Backups', 'backup-status.json');
 
 function env(key: string, fallback = ''): string {
   return process.env[key] || fallback;
+}
+
+// Sanitize inputs for shell safety — reject dangerous characters
+function sanitizeSSHArg(value: string, name: string): string {
+  if (/[;|&$`<>\\"'\x00-\x1f]/.test(value)) {
+    throw new Error(`Invalid characters in ${name}`);
+  }
+  return value;
 }
 
 function getBackupDirs(): { name: string; path: string }[] {
@@ -130,8 +140,23 @@ function getNasBackups(): NasEntry[] {
     const remotePath = env('BACKUP_NAS_BACKUP_PATH');
     if (host && user && remotePath) {
       try {
-        const sshCmd = `ssh -o BatchMode=yes -o StrictHostKeyChecking=no ${user}@${host} "ls -la --time-style=long-iso '${remotePath}'" 2>/dev/null`;
-        const output = execSync(sshCmd, { encoding: 'utf8', timeout: 15000 });
+        // Sanitize all SSH arguments to prevent command injection
+        const safeHost = sanitizeSSHArg(host, 'BACKUP_NAS_HOST');
+        const safeUser = sanitizeSSHArg(user, 'BACKUP_NAS_USER');
+        const safePath = sanitizeSSHArg(remotePath, 'BACKUP_NAS_BACKUP_PATH');
+
+        // Use execFileSync with array args instead of shell interpolation
+        const output = execFileSync(
+          'ssh',
+          [
+            '-o', 'BatchMode=yes',
+            '-o', 'StrictHostKeyChecking=accept-new',
+            '-o', 'UserKnownHostsFile=/dev/null',
+            `${safeUser}@${safeHost}`,
+            'ls', '-la', '--time-style=long-iso', safePath,
+          ],
+          { encoding: 'utf8', timeout: 15000, stdio: ['pipe', 'pipe', 'pipe'] }
+        );
         const lines = output.split('\n');
         for (const line of lines) {
           const match = line.match(/^[^-\s][^ ]+\s+\d+\s+\S+\s+\S+\s+(\d+)\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})\s+(.+)$/);
@@ -195,15 +220,49 @@ function getCalendar(): { days: CalendarDay[]; missedBackups: string[] } {
     // Missed detection for today
     if (i === 0 && env('BACKUP_LOCAL_ENABLED')) {
       const schedule = env('BACKUP_LOCAL_SCHEDULE', '0 1 * * *');
-      const parts = schedule.split(' ');
-      const scheduleHour = parseInt(parts[1]);
-      const scheduleMin = parseInt(parts[0]);
-      const now = new Date();
-      if (now.getHours() > scheduleHour || (now.getHours() === scheduleHour && now.getMinutes() > scheduleMin + 5)) {
-        if (localStatus === 'none' && nasStatus === 'none') {
-          missed.push(`Local backup missed — scheduled ${String(scheduleHour).padStart(2,'0')}:${String(scheduleMin).padStart(2,'0')} but no backup found`);
-        } else if (localStatus === 'none') {
-          missed.push(`Local backup missed — NAS backup ran but local backup not found`);
+      try {
+        // Use cron-parser to properly evaluate cron schedule in Europe/Amsterdam timezone
+        const timezone = 'Europe/Amsterdam';
+        const now = new Date();
+
+        // Get previous scheduled run
+        const expr = CronExpressionParser.parse(schedule, { tz: timezone });
+        const prevRun = expr.prev().toDate();
+        const nextRun = expr.next().toDate();
+
+        // If we're more than 5 minutes past the scheduled time and next run hasn't started
+        const fiveMinPast = new Date(prevRun.getTime() + 5 * 60 * 1000);
+        const backupTime = new Date(prevRun.getTime());
+
+        if (now > fiveMinPast) {
+          // Check if backup exists between scheduled time and now
+          const scheduleHour = prevRun.getHours();
+          const scheduleMin = prevRun.getMinutes();
+          const hasBackupBetween = localBackups.some(e => {
+            const backupDate = new Date(e.modified);
+            return backupDate >= backupTime && backupDate <= now;
+          });
+
+          if (!hasBackupBetween) {
+            if (localStatus === 'none' && nasStatus === 'none') {
+              missed.push(`Local backup missed — scheduled ${String(scheduleHour).padStart(2,'0')}:${String(scheduleMin).padStart(2,'0')} but no backup found`);
+            } else if (localStatus === 'none') {
+              missed.push(`Local backup missed — NAS backup ran but local backup not found`);
+            }
+          }
+        }
+      } catch {
+        // If cron parsing fails, fall back to simple hour check
+        const parts = schedule.split(' ');
+        const scheduleHour = parseInt(parts[1]);
+        const scheduleMin = parseInt(parts[0]);
+        const now = new Date();
+        if (now.getHours() > scheduleHour || (now.getHours() === scheduleHour && now.getMinutes() > scheduleMin + 5)) {
+          if (localStatus === 'none' && nasStatus === 'none') {
+            missed.push(`Local backup missed — scheduled ${String(scheduleHour).padStart(2,'0')}:${String(scheduleMin).padStart(2,'0')} but no backup found`);
+          } else if (localStatus === 'none') {
+            missed.push(`Local backup missed — NAS backup ran but local backup not found`);
+          }
         }
       }
     }
@@ -306,8 +365,17 @@ app.get('/:name', async (c) => {
     if (entry) {
       const fileName = basename(entry.path);
       c.header('Content-Disposition', `attachment; filename="${fileName}"`);
-      c.header('Content-Type', 'application/gzip');
-      return c.body(createReadStream(entry.path));
+      // Set Content-Type based on file extension
+      const ext = fileName.toLowerCase();
+      if (ext.endsWith('.zip')) {
+        c.header('Content-Type', 'application/zip');
+      } else if (ext.endsWith('.tar.gz') || ext.endsWith('.gz')) {
+        c.header('Content-Type', 'application/gzip');
+      } else {
+        c.header('Content-Type', 'application/octet-stream');
+      }
+      // Convert Node ReadStream to Web ReadableStream
+      return c.body(Readable.toWeb(createReadStream(entry.path)) as ReadableStream);
     }
   }
   return c.json({ error: 'Backup not found' }, 404);

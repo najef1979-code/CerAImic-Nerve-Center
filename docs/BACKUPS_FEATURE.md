@@ -95,7 +95,7 @@ BACKUP_NAS_SCHEDULE=30 1 * * *
 - `DELETE /api/backups/:name` — Deletes a specific backup archive
 
 ### Settings UI
-- `src/features/settings/BackupsSettings.tsx` — reads/writes backup env vars
+- `src/features/settings/BackupsSettings.tsx` — reads backup env vars (display only; settings are changed via `.env` file, then restart server)
 - Integrated into `SettingsDrawer`
 
 ### BackupsPanel UI (`src/features/backups/BackupsPanel.tsx`)
