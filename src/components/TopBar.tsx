@@ -264,23 +264,35 @@ export function TopBar({
               <span>Chat</span>
             </button>
             <button
+              onClick={() => onViewModeChange("ops")}
+              title="Ops View"
+              aria-label="Switch to ops view"
+              aria-pressed={viewMode === "ops"}
+              data-active={viewMode === "ops"}
+              className={`shell-chip min-h-11 flex-1 justify-center text-[0.733rem] uppercase tracking-[0.14em] max-[371px]:min-h-[38px] max-[371px]:gap-1 max-[371px]:px-2 max-[371px]:text-[0.667rem] max-[371px]:tracking-[0.08em] max-[371px]:[&_svg]:size-3 sm:min-h-10 sm:flex-none ${viewMode === 'ops' ? 'bg-green-500/20 ring-1 ring-green-500/40' : ''}`}
+            >
+              <Activity size={13} aria-hidden="true" />
+              <span>Ops</span>
+            </button>
+            <button
               onClick={() => onViewModeChange("backups")}
               title="Backups View"
               aria-label="Switch to backups view"
               aria-pressed={viewMode === "backups"}
               data-active={viewMode === "backups"}
-              className="shell-chip min-h-11 flex-1 justify-center text-[0.733rem] uppercase tracking-[0.14em] max-[371px]:min-h-[38px] max-[371px]:gap-1 max-[371px]:px-2 max-[371px]:text-[0.667rem] max-[371px]:tracking-[0.08em] max-[371px]:[&_svg]:size-3 sm:min-h-10 sm:flex-none"
+              className={`shell-chip min-h-11 flex-1 justify-center text-[0.733rem] uppercase tracking-[0.14em] max-[371px]:min-h-[38px] max-[371px]:gap-1 max-[371px]:px-2 max-[371px]:text-[0.667rem] max-[371px]:tracking-[0.08em] max-[371px]:[&_svg]:size-3 sm:min-h-10 sm:flex-none ${viewMode === 'backups' ? 'bg-green-500/20 ring-1 ring-green-500/40' : ''}`}
             >
               <FolderOpen size={13} aria-hidden="true" />
               <span>Backups</span>
             </button>
+            <div className="w-px h-6 bg-border mx-0.5" />
             <button
               onClick={() => onViewModeChange("org")}
               title="Org Chart View"
               aria-label="Switch to org chart view"
               aria-pressed={viewMode === "org"}
               data-active={viewMode === "org"}
-              className="shell-chip min-h-11 flex-1 justify-center text-[0.733rem] uppercase tracking-[0.14em] max-[371px]:min-h-[38px] max-[371px]:gap-1 max-[371px]:px-2 max-[371px]:text-[0.667rem] max-[371px]:tracking-[0.08em] max-[371px]:[&_svg]:size-3 sm:min-h-10 sm:flex-none"
+              className={`shell-chip min-h-11 flex-1 justify-center text-[0.733rem] uppercase tracking-[0.14em] max-[371px]:min-h-[38px] max-[371px]:gap-1 max-[371px]:px-2 max-[371px]:text-[0.667rem] max-[371px]:tracking-[0.08em] max-[371px]:[&_svg]:size-3 sm:min-h-10 sm:flex-none ${viewMode === 'org' ? 'bg-blue-500/20 ring-1 ring-blue-500/40' : ''}`}
             >
               <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx={12} cy={5} r={3}/><circle cx={5} cy={19} r={3}/><circle cx={19} cy={19} r={3}/><line x1={12} y1={8} x2={5} y2={16}/><line x1={12} y1={8} x2={19} y2={16}/></svg>
               <span>Org</span>
@@ -291,7 +303,7 @@ export function TopBar({
               aria-label="Switch to tasks view"
               aria-pressed={viewMode === "kanban"}
               data-active={viewMode === "kanban"}
-              className="shell-chip min-h-11 flex-1 justify-center text-[0.733rem] uppercase tracking-[0.14em] max-[371px]:min-h-[38px] max-[371px]:gap-1 max-[371px]:px-2 max-[371px]:text-[0.667rem] max-[371px]:tracking-[0.08em] max-[371px]:[&_svg]:size-3 sm:min-h-10 sm:flex-none"
+              className={`shell-chip min-h-11 flex-1 justify-center text-[0.733rem] uppercase tracking-[0.14em] max-[371px]:min-h-[38px] max-[371px]:gap-1 max-[371px]:px-2 max-[371px]:text-[0.667rem] max-[371px]:tracking-[0.08em] max-[371px]:[&_svg]:size-3 sm:min-h-10 sm:flex-none ${viewMode === 'kanban' ? 'bg-blue-500/20 ring-1 ring-blue-500/40' : ''}`}
             >
               <LayoutGrid size={13} aria-hidden="true" />
               <span>Tasks</span>

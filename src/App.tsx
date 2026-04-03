@@ -56,6 +56,7 @@ const WorkspacePanel = lazy(() => import('@/features/workspace/WorkspacePanel').
 const KanbanPanel = lazy(() => import('@/features/kanban/KanbanPanel').then(m => ({ default: m.KanbanPanel })));
 const BackupsPanel = lazy(() => import('@/features/backups/BackupsPanel').then(m => ({ default: m.BackupsPanel })));
 const OrgChart = lazy(() => import('@/features/org/OrgChart').then(m => ({ default: m.OrgChart })));
+const OpsTab = lazy(() => import('@/features/ops/OpsTab').then(m => ({ default: m.OpsTab })));
 
 interface AppProps {
   onLogout?: () => void;
@@ -311,7 +312,7 @@ export default function App({ onLogout }: AppProps) {
   const [viewMode, setViewModeRaw] = useState<ViewMode>(() => {
     try {
       const saved = localStorage.getItem('nerve:viewMode');
-      if (saved === 'kanban') return 'kanban';
+      if (saved === 'kanban' || saved === 'backups' || saved === 'org' || saved === 'ops') return saved;
     } catch { /* ignore */ }
     return 'chat';
   });
@@ -865,7 +866,7 @@ export default function App({ onLogout }: AppProps) {
       <div className="flex-1 flex gap-3 overflow-hidden min-h-0 px-2 pt-1.5 pb-2 sm:px-4 sm:pt-2 sm:pb-2">
         {/* File tree — desktop inline, mobile drawer */}
         {!isCompactLayout && (
-          <div className={viewMode === 'kanban' ? 'hidden' : fileBrowserCollapsed ? 'contents' : 'h-full min-h-0'}>
+          <div className={viewMode === 'kanban' || viewMode === 'backups' || viewMode === 'org' || viewMode === 'ops' ? 'hidden' : fileBrowserCollapsed ? 'contents' : 'h-full min-h-0'}>
             <PanelErrorBoundary name="File Explorer">
               <FileTreePanel
                 workspaceAgentId={workspaceAgentId}
@@ -937,12 +938,19 @@ export default function App({ onLogout }: AppProps) {
             </Suspense>
           </div>
         )}
+        {viewMode === 'ops' && (
+          <div className="w-full h-full overflow-hidden">
+            <Suspense fallback={<div className="flex items-center justify-center h-full text-muted-foreground text-xs">Loading…</div>}>
+              <OpsTab />
+            </Suspense>
+          </div>
+        )}
         {isCompactLayout ? (
-          <div className={`shell-panel flex-1 min-w-0 min-h-0 overflow-hidden rounded-[28px] boot-panel${viewMode === 'kanban' ? ' hidden' : ''}`}>
+          <div className={`shell-panel flex-1 min-w-0 min-h-0 overflow-hidden rounded-[28px] boot-panel${viewMode === 'kanban' || viewMode === 'backups' || viewMode === 'org' || viewMode === 'ops' ? ' hidden' : ''}`}>
             {chatContent}
           </div>
         ) : (
-          <div style={{ display: viewMode === 'kanban' ? 'none' : 'contents' }}>
+          <div style={{ display: viewMode === 'kanban' || viewMode === 'backups' || viewMode === 'org' || viewMode === 'ops' ? 'none' : 'contents' }}>
             <ResizablePanels
               leftPercent={panelRatio}
               onResize={setPanelRatio}

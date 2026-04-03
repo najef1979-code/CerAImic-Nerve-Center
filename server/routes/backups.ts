@@ -100,6 +100,15 @@ interface NasEntry {
   dayOfWeek: string;
 }
 
+function monthNameToNum(monthName: string): string {
+  const months: Record<string, string> = {
+    january: '01', february: '02', march: '03', april: '04',
+    may: '05', june: '06', july: '07', august: '08',
+    september: '09', october: '10', november: '11', december: '12',
+  };
+  return months[monthName.toLowerCase()] || '01';
+}
+
 function getDayOfWeek(dateStr: string): string {
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const date = new Date(dateStr + 'T12:00:00');
@@ -117,9 +126,13 @@ function getNasBackups(): NasEntry[] {
       if (file.endsWith('.tar.gz') || file.endsWith('.gz')) {
         const fullPath = join(cacheDir, file);
         const st = statSync(fullPath);
-        const isFull = file.startsWith('full-');
-        const dateMatch = file.match(/(\d{4}-\d{2}-\d{2})/);
-        const dateStr = dateMatch ? dateMatch[1] : st.mtime.toISOString().slice(0, 10);
+        // Handle both old format (full-YYYY-MM-DD) and new format (Full-CLI-backup-DD-monthname-YYYY.N)
+        const isFull = file.startsWith('full-') || file.startsWith('Full-');
+        // Try new format first: Full-CLI-backup-04-april-2026.0 or Incr-CLI-backup-04-april-2026.1
+        const newFormatMatch = file.match(/(\d{2})-(\w+)-(\d{4})/);
+        const dateStr = newFormatMatch
+          ? new Date(`${newFormatMatch[3]}-${monthNameToNum(newFormatMatch[2])}-${newFormatMatch[1].split('-')[0]}`).toISOString().slice(0, 10)
+          : st.mtime.toISOString().slice(0, 10);
         entries.push({
           name: file,
           size: st.size,
@@ -164,7 +177,8 @@ function getNasBackups(): NasEntry[] {
             const [, sizeStr, date, time, name] = match;
             const size = parseInt(sizeStr, 10);
             if (name.endsWith('.tar.gz') || name.endsWith('.gz') || name.endsWith('.zip')) {
-              const isFull = name.startsWith('full-');
+              // Handle both old format (full-YYYY-MM-DD) and new format (Full-CLI-backup-... or Incr-CLI-backup-...)
+              const isFull = name.startsWith('full-') || name.startsWith('Full-');
               entries.push({
                 name: name.trim(),
                 size,
@@ -217,52 +231,28 @@ function getCalendar(): { days: CalendarDay[]; missedBackups: string[] } {
 
     const nasStatus: CalendarDay['nas'] = nasOnDay.length > 0 ? 'success' : 'none';
 
-    // Missed detection for today
+    // Missed detection for today - consistent with health check
     if (i === 0 && env('BACKUP_LOCAL_ENABLED')) {
-      const schedule = env('BACKUP_LOCAL_SCHEDULE', '0 1 * * *');
-      try {
-        // Use cron-parser to properly evaluate cron schedule in Europe/Amsterdam timezone
-        const timezone = 'Europe/Amsterdam';
-        const now = new Date();
+      // Check if there's a backup within 24 hours (same logic as isOk)
+      const now = new Date();
+      const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const hasRecentBackup = localBackups.some(e => {
+        const backupDate = new Date(e.modified);
+        return backupDate >= twentyFourHoursAgo;
+      });
+      const hasRecentNasBackup = nasBackups.some(e => {
+        const backupDate = new Date(e.modified);
+        return backupDate >= twentyFourHoursAgo;
+      });
 
-        // Get previous scheduled run
-        const expr = CronExpressionParser.parse(schedule, { tz: timezone });
-        const prevRun = expr.prev().toDate();
-        const nextRun = expr.next().toDate();
-
-        // If we're more than 5 minutes past the scheduled time and next run hasn't started
-        const fiveMinPast = new Date(prevRun.getTime() + 5 * 60 * 1000);
-        const backupTime = new Date(prevRun.getTime());
-
-        if (now > fiveMinPast) {
-          // Check if backup exists between scheduled time and now
-          const scheduleHour = prevRun.getHours();
-          const scheduleMin = prevRun.getMinutes();
-          const hasBackupBetween = localBackups.some(e => {
-            const backupDate = new Date(e.modified);
-            return backupDate >= backupTime && backupDate <= now;
-          });
-
-          if (!hasBackupBetween) {
-            if (localStatus === 'none' && nasStatus === 'none') {
-              missed.push(`Local backup missed — scheduled ${String(scheduleHour).padStart(2,'0')}:${String(scheduleMin).padStart(2,'0')} but no backup found`);
-            } else if (localStatus === 'none') {
-              missed.push(`Local backup missed — NAS backup ran but local backup not found`);
-            }
-          }
-        }
-      } catch {
-        // If cron parsing fails, fall back to simple hour check
-        const parts = schedule.split(' ');
-        const scheduleHour = parseInt(parts[1]);
-        const scheduleMin = parseInt(parts[0]);
-        const now = new Date();
-        if (now.getHours() > scheduleHour || (now.getHours() === scheduleHour && now.getMinutes() > scheduleMin + 5)) {
-          if (localStatus === 'none' && nasStatus === 'none') {
-            missed.push(`Local backup missed — scheduled ${String(scheduleHour).padStart(2,'0')}:${String(scheduleMin).padStart(2,'0')} but no backup found`);
-          } else if (localStatus === 'none') {
-            missed.push(`Local backup missed — NAS backup ran but local backup not found`);
-          }
+      // Show missed message if overallHealthy is false (consistent with Issues Detected)
+      if (!hasRecentBackup || !hasRecentNasBackup) {
+        if (!hasRecentBackup && !hasRecentNasBackup) {
+          missed.push(`Local backup missed — no backup found within 24 hours`);
+        } else if (!hasRecentBackup) {
+          missed.push(`Local backup missed — NAS backup ran but local backup not found within 24 hours`);
+        } else if (!hasRecentNasBackup) {
+          missed.push(`NAS backup missed — local backup ran but NAS backup not found within 24 hours`);
         }
       }
     }

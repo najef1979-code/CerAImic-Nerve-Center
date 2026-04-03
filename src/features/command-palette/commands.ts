@@ -3,7 +3,7 @@ import { themes, type ThemeName } from '@/lib/themes';
 import { fonts, type FontName } from '@/lib/fonts';
 import type { TTSProvider } from '@/features/tts/useTTS';
 
-export type ViewMode = 'chat' | 'kanban' | 'backups';
+export type ViewMode = 'chat' | 'kanban' | 'backups' | 'org' | 'ops';
 
 export interface CommandActions {
   onNewSession: () => void;

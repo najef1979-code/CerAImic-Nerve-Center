@@ -98,13 +98,13 @@ function dayBgColor(status: DayStatus, isToday: boolean): string {
     switch (status) {
       case 'success': return 'bg-green text-white ring-1 ring-green';
       case 'missed': return 'bg-yellow-500 text-black';
-      case 'none': return 'bg-primary/30 text-primary border border-primary/40';
+      case 'none': return 'bg-slate-600 text-white';
     }
   }
   switch (status) {
     case 'success': return 'bg-green text-white';
     case 'missed': return 'bg-yellow-500 text-black';
-    case 'none': return 'bg-muted text-muted-foreground';
+    case 'none': return 'bg-slate-600 text-white';
   }
 }
 

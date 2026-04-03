@@ -30,6 +30,7 @@ import tokensRoutes from './routes/tokens.js';
 import memoriesRoutes from './routes/memories.js';
 import eventsRoutes from './routes/events.js';
 import serverInfoRoutes from './routes/server-info.js';
+import systemInfoRoutes from './routes/system-info.js';
 import codexLimitsRoutes from './routes/codex-limits.js';
 import claudeCodeLimitsRoutes from './routes/claude-code-limits.js';
 import versionRoutes from './routes/version.js';
@@ -48,6 +49,7 @@ import fileBrowserRoutes from './routes/file-browser.js';
 import kanbanRoutes from './routes/kanban.js';
 import backupsRoutes from './routes/backups.js';
 import backupSettingsRoutes from './routes/backup-settings.js';
+import orgPositionsRoutes from './routes/org-positions.js';
 // activity routes removed — tab dropped from workspace panel
 
 const app = new Hono();
@@ -86,11 +88,12 @@ app.use('*', cacheHeaders);
 
 const routes = [
   healthRoutes, authRoutes, ttsRoutes, transcribeRoutes, agentLogRoutes,
-  tokensRoutes, memoriesRoutes, eventsRoutes, serverInfoRoutes,
+  tokensRoutes, memoriesRoutes, eventsRoutes, serverInfoRoutes, systemInfoRoutes,
   codexLimitsRoutes, claudeCodeLimitsRoutes, versionRoutes, versionCheckRoutes,
   gatewayRoutes, connectDefaultsRoutes,
   workspaceRoutes, cronsRoutes, sessionsRoutes, skillsRoutes, filesRoutes, apiKeysRoutes,
   voicePhrasesRoutes, fileBrowserRoutes, channelsRoutes, kanbanRoutes, backupSettingsRoutes,
+  orgPositionsRoutes,
 ];
 for (const route of routes) app.route('/', route);
 app.route('/api/backups', backupsRoutes);
