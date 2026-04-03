@@ -4,6 +4,7 @@ import { useKanban } from './hooks/useKanban';
 import { useProposals } from './hooks/useProposals';
 import { KanbanHeader } from './KanbanHeader';
 import { KanbanBoard } from './KanbanBoard';
+import { ProjectsView } from './ProjectsView';
 import { CreateTaskDialog } from './CreateTaskDialog';
 import { TaskDetailDrawer } from './TaskDetailDrawer';
 
@@ -48,6 +49,7 @@ export function KanbanPanel({ initialTaskId, onInitialTaskConsumed }: KanbanPane
 
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<KanbanTask | null>(null);
+  const [view, setView] = useState<'board' | 'projects'>('board');
   const consumedRef = useRef<string | null>(null);
 
   // Auto-open drawer for initialTaskId
@@ -106,21 +108,30 @@ export function KanbanPanel({ initialTaskId, onInitialTaskConsumed }: KanbanPane
         pendingProposalCount={pendingProposalCount}
         onApproveProposal={async (id) => { await approveProposal(id); await fetchTasks(); }}
         onRejectProposal={async (id) => { await rejectProposal(id); }}
+        view={view}
+        onViewChange={setView}
       />
 
-      {/* Board body */}
+      {/* Board / Projects body */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden px-4 pb-4">
-        <KanbanBoard
-          tasksByStatus={tasksByStatus}
-          onCardClick={handleCardClick}
-          loading={loading}
-          error={error}
-          onRetry={() => fetchTasks()}
-          hasAnyTasks={tasks.length > 0}
-          onCreateTask={openCreateDialog}
-          reorderTask={reorderTask}
-          boardColumns={boardColumns}
-        />
+        {view === 'board' ? (
+          <KanbanBoard
+            tasksByStatus={tasksByStatus}
+            onCardClick={handleCardClick}
+            loading={loading}
+            error={error}
+            onRetry={() => fetchTasks()}
+            hasAnyTasks={tasks.length > 0}
+            onCreateTask={openCreateDialog}
+            reorderTask={reorderTask}
+            boardColumns={boardColumns}
+          />
+        ) : (
+          <ProjectsView
+            tasks={tasks}
+            onCardClick={handleCardClick}
+          />
+        )}
       </div>
 
       {/* Create Task Modal */}

@@ -1,5 +1,5 @@
 import { memo, useState, useCallback, useRef, useEffect } from 'react';
-import { Filter, Plus, X, Inbox } from 'lucide-react';
+import { Filter, Plus, X, Inbox, LayoutGrid, Columns } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { TaskStatus, TaskPriority } from './types';
 import { IDEA_STAGE_LABELS } from './types';
@@ -57,6 +57,8 @@ interface KanbanHeaderProps {
   pendingProposalCount?: number;
   onApproveProposal?: (id: string) => void;
   onRejectProposal?: (id: string) => void;
+  view?: 'board' | 'projects';
+  onViewChange?: (view: 'board' | 'projects') => void;
 }
 
 export const KanbanHeader = memo(function KanbanHeader({
@@ -68,6 +70,8 @@ export const KanbanHeader = memo(function KanbanHeader({
   pendingProposalCount = 0,
   onApproveProposal,
   onRejectProposal,
+  view = 'board',
+  onViewChange,
 }: KanbanHeaderProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [showInbox, setShowInbox] = useState(false);
@@ -144,6 +148,36 @@ export const KanbanHeader = memo(function KanbanHeader({
 
         {/* Right: search + filter toggle + create */}
         <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
+          {/* View toggle */}
+          {onViewChange && (
+            <div className="flex items-center rounded-lg border border-border/60 bg-background/40 p-0.5">
+              <button
+                onClick={() => onViewChange('board')}
+                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  view === 'board'
+                    ? 'bg-background/80 text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                title="Board view"
+              >
+                <Columns size={13} />
+                Board
+              </button>
+              <button
+                onClick={() => onViewChange('projects')}
+                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  view === 'projects'
+                    ? 'bg-background/80 text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                title="Projects view"
+              >
+                <LayoutGrid size={13} />
+                Projects
+              </button>
+            </div>
+          )}
+
           {/* Search */}
           <div className="relative min-w-0 flex-1 sm:flex-none">
             <input
