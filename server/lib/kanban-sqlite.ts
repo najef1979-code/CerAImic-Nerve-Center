@@ -367,9 +367,9 @@ function getDefaultConfig(): KanbanBoardConfig {
   return { ...DEFAULT_CONFIG };
 }
 
-// ── SQLite Store Class ─────────────────────────────────────────────
+// ── KanbanStore class (CRUD + workflow methods) ───────────────────────────────
 
-export class KanbanStore {
+class KanbanStoreBase {
   // Task operations
   async createTask(input: {
     title: string;
@@ -697,8 +697,504 @@ export class KanbanStore {
   }
 }
 
-// Export singleton
-export const getKanbanStore = () => new KanbanStore();
+// ── Helper functions ─────────────────────────────────────────────────
 
-// Export types
-export type { TaskStatus, TaskPriority, TaskActor, KanbanTask, KanbanBoardConfig, KanbanProposal, ProposalStatus };
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+}
+
+function uniqueSlugId(title: string, existingIds: Set<string>): string {
+  const base = slugify(title) || 'task';
+  if (!existingIds.has(base)) return base;
+  for (let i = 2; ; i++) {
+    const candidate = `${base}-${i}`;
+    if (!existingIds.has(candidate)) return candidate;
+  }
+}
+
+const runKeySequenceByBase = new Map<string, number>();
+
+function uniqueRunSessionKey(id: string, now: number): string {
+  const base = `kb-${id}-${now}`;
+  const nextSequence = (runKeySequenceByBase.get(base) ?? 0) + 1;
+  runKeySequenceByBase.set(base, nextSequence);
+  return nextSequence === 1 ? base : `${base}-${nextSequence.toString(36)}`;
+}
+
+function matchesRunIdentifier(run: TaskRunLink, value: string): boolean {
+  return (
+    value === run.sessionKey ||
+    value === run.childSessionKey ||
+    value === run.sessionId ||
+    value === run.runId
+  );
+}
+
+function canonicalizeProposalPayloadAssignee(payload: Record<string, unknown>): Record<string, unknown> {
+  if (!Object.prototype.hasOwnProperty.call(payload, 'assignee')) return payload;
+  return {
+    ...payload,
+    assignee: payload.assignee == null ? null : canonicalizeKanbanAssignee(String(payload.assignee)),
+  };
+}
+
+function getAllowedTaskStatuses(config: KanbanBoardConfig): Set<string> {
+  const BUILT_IN_STATUSES = ['backlog', 'todo', 'in-progress', 'review', 'done', 'cancelled'];
+  const configuredStatuses = config.columns?.map(c => c.key) ?? [];
+  return new Set([...BUILT_IN_STATUSES, ...configuredStatuses]);
+}
+
+function isAllowedTaskStatus(value: string, config: KanbanBoardConfig): boolean {
+  return getAllowedTaskStatuses(config).has(value);
+}
+
+// ── KanbanStore with workflow methods ──────────────────────────────────────────
+
+export class KanbanStore extends KanbanStoreBase {
+  async executeTask(
+    id: string,
+    options?: { model?: string; thinking?: 'off' | 'low' | 'medium' | 'high'; sessionKey?: string },
+    actor?: string,
+  ): Promise<KanbanTask> {
+    const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    if (!row) throw new TaskNotFoundError(id);
+
+    const task = rowToTask(row);
+
+    // Idempotency: if already in-progress with active run, return as-is
+    if (task.status === 'in-progress' && task.run?.status === 'running') {
+      return task;
+    }
+
+    // Validate transition
+    if (task.status !== 'todo' && task.status !== 'backlog') {
+      throw new InvalidTransitionError(
+        task.status,
+        'in-progress',
+        `Cannot execute task in "${task.status}" status; must be "todo" or "backlog"`,
+      );
+    }
+
+    const now = Date.now();
+    const sessionKey = options?.sessionKey ?? uniqueRunSessionKey(id, now);
+
+    // Get max columnOrder for in-progress
+    const maxOrderRow = db.prepare(
+      'SELECT MAX(columnOrder) as maxOrder FROM tasks WHERE status = ? AND id != ?'
+    ).get('in-progress', id) as { maxOrder: number | null };
+    const columnOrder = (maxOrderRow?.maxOrder ?? -1) + 1;
+
+    db.prepare(`
+      UPDATE tasks SET
+        status = 'in-progress',
+        run = ?,
+        result = NULL,
+        resultAt = NULL,
+        model = COALESCE(?, model),
+        thinking = COALESCE(?, thinking),
+        columnOrder = ?,
+        updatedAt = ?,
+        version = version + 1
+      WHERE id = ?
+    `).run(
+      JSON.stringify({ sessionKey, startedAt: now, status: 'running' }),
+      options?.model ?? null,
+      options?.thinking ?? null,
+      columnOrder,
+      now,
+      id,
+    );
+
+    const updatedRow = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Record<string, unknown>;
+    return rowToTask(updatedRow);
+  }
+
+  async attachRunIdentifiers(
+    taskId: string,
+    sessionKey: string,
+    identifiers: { childSessionKey?: string; runId?: string },
+  ): Promise<KanbanTask | null> {
+    const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as Record<string, unknown> | undefined;
+    if (!row) throw new TaskNotFoundError(taskId);
+
+    const task = rowToTask(row);
+    if (!task.run || task.run.status !== 'running' || task.run.sessionKey !== sessionKey) {
+      return null;
+    }
+
+    const nextChildSessionKey = identifiers.childSessionKey ?? task.run.childSessionKey ?? task.run.sessionId;
+    const nextRunId = identifiers.runId ?? task.run.runId;
+    const nextSessionId = task.run.sessionId ?? nextChildSessionKey;
+
+    if (
+      nextChildSessionKey === task.run.childSessionKey &&
+      nextRunId === task.run.runId &&
+      nextSessionId === task.run.sessionId
+    ) {
+      return task;
+    }
+
+    const updatedRun = {
+      ...task.run,
+      childSessionKey: nextChildSessionKey,
+      sessionId: nextSessionId,
+      runId: nextRunId,
+    };
+
+    db.prepare('UPDATE tasks SET run = ?, version = version + 1 WHERE id = ?')
+      .run(JSON.stringify(updatedRun), taskId);
+
+    const updatedRow = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as Record<string, unknown>;
+    return rowToTask(updatedRow);
+  }
+
+  async approveTask(id: string, note?: string, actor?: TaskActor): Promise<KanbanTask> {
+    const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    if (!row) throw new TaskNotFoundError(id);
+
+    const task = rowToTask(row);
+    if (task.status !== 'review') {
+      throw new InvalidTransitionError(task.status, 'done', `Cannot approve task in "${task.status}" status; must be "review"`);
+    }
+
+    const now = Date.now();
+    const maxOrderRow = db.prepare(
+      'SELECT MAX(columnOrder) as maxOrder FROM tasks WHERE status = ? AND id != ?'
+    ).get('done', id) as { maxOrder: number | null };
+    const columnOrder = (maxOrderRow?.maxOrder ?? -1) + 1;
+
+    const feedback = [...task.feedback];
+    if (note) {
+      feedback.push({ at: now, by: actor ?? 'operator', note });
+    }
+
+    db.prepare(`
+      UPDATE tasks SET
+        status = 'done',
+        feedback = ?,
+        columnOrder = ?,
+        updatedAt = ?,
+        version = version + 1
+      WHERE id = ?
+    `).run(JSON.stringify(feedback), columnOrder, now, id);
+
+    const updatedRow = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Record<string, unknown>;
+    return rowToTask(updatedRow);
+  }
+
+  async rejectTask(id: string, note: string, actor?: TaskActor): Promise<KanbanTask> {
+    const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    if (!row) throw new TaskNotFoundError(id);
+
+    const task = rowToTask(row);
+    if (task.status !== 'review') {
+      throw new InvalidTransitionError(task.status, 'todo', `Cannot reject task in "${task.status}" status; must be "review"`);
+    }
+
+    const now = Date.now();
+    const maxOrderRow = db.prepare(
+      'SELECT MAX(columnOrder) as maxOrder FROM tasks WHERE status = ? AND id != ?'
+    ).get('todo', id) as { maxOrder: number | null };
+    const columnOrder = (maxOrderRow?.maxOrder ?? -1) + 1;
+
+    const feedback = [...task.feedback];
+    feedback.push({ at: now, by: actor ?? 'operator', note });
+
+    db.prepare(`
+      UPDATE tasks SET
+        status = 'todo',
+        run = NULL,
+        result = NULL,
+        resultAt = NULL,
+        feedback = ?,
+        columnOrder = ?,
+        updatedAt = ?,
+        version = version + 1
+      WHERE id = ?
+    `).run(JSON.stringify(feedback), columnOrder, now, id);
+
+    const updatedRow = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Record<string, unknown>;
+    return rowToTask(updatedRow);
+  }
+
+  async abortTask(id: string, note?: string, actor?: TaskActor): Promise<KanbanTask> {
+    const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    if (!row) throw new TaskNotFoundError(id);
+
+    const task = rowToTask(row);
+    if (task.status !== 'in-progress' || !task.run || task.run.status !== 'running') {
+      throw new InvalidTransitionError(task.status, 'todo', `Cannot abort task: must be "in-progress" with an active run`);
+    }
+
+    const now = Date.now();
+    const maxOrderRow = db.prepare(
+      'SELECT MAX(columnOrder) as maxOrder FROM tasks WHERE status = ? AND id != ?'
+    ).get('todo', id) as { maxOrder: number | null };
+    const columnOrder = (maxOrderRow?.maxOrder ?? -1) + 1;
+
+    const feedback = [...task.feedback];
+    if (note) {
+      feedback.push({ at: now, by: actor ?? 'operator', note });
+    }
+
+    const updatedRun = { ...task.run, status: 'aborted', endedAt: now };
+
+    db.prepare(`
+      UPDATE tasks SET
+        status = 'todo',
+        run = ?,
+        feedback = ?,
+        columnOrder = ?,
+        updatedAt = ?,
+        version = version + 1
+      WHERE id = ?
+    `).run(JSON.stringify(updatedRun), JSON.stringify(feedback), columnOrder, now, id);
+
+    const updatedRow = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Record<string, unknown>;
+    return rowToTask(updatedRow);
+  }
+
+  async completeRun(
+    taskId: string,
+    sessionKey: string,
+    result?: string,
+    error?: string,
+  ): Promise<KanbanTask> {
+    const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as Record<string, unknown> | undefined;
+    if (!row) throw new TaskNotFoundError(taskId);
+
+    const task = rowToTask(row);
+    if (!task.run || task.run.status !== 'running') {
+      throw new InvalidTransitionError(task.status, error ? 'todo' : 'review', `No active run to complete on task "${taskId}"`);
+    }
+
+    if (!matchesRunIdentifier(task.run, sessionKey)) {
+      throw new InvalidTransitionError(task.status, error ? 'todo' : 'review', `Run key mismatch for task "${taskId}": active run is "${task.run.sessionKey}", got "${sessionKey}"`);
+    }
+
+    const now = Date.now();
+
+    if (error) {
+      // Error path: move to todo
+      const maxOrderRow = db.prepare(
+        'SELECT MAX(columnOrder) as maxOrder FROM tasks WHERE status = ? AND id != ?'
+      ).get('todo', taskId) as { maxOrder: number | null };
+      const columnOrder = (maxOrderRow?.maxOrder ?? -1) + 1;
+
+      const updatedRun = { ...task.run, status: 'error', endedAt: now, error };
+      db.prepare(`
+        UPDATE tasks SET
+          status = 'todo',
+          run = ?,
+          result = NULL,
+          resultAt = NULL,
+          columnOrder = ?,
+          updatedAt = ?,
+          version = version + 1
+        WHERE id = ?
+      `).run(JSON.stringify(updatedRun), columnOrder, now, taskId);
+    } else {
+      // Success path: move to review
+      const maxOrderRow = db.prepare(
+        'SELECT MAX(columnOrder) as maxOrder FROM tasks WHERE status = ? AND id != ?'
+      ).get('review', taskId) as { maxOrder: number | null };
+      const columnOrder = (maxOrderRow?.maxOrder ?? -1) + 1;
+
+      const updatedRun = { ...task.run, status: 'done', endedAt: now };
+      db.prepare(`
+        UPDATE tasks SET
+          status = 'review',
+          run = ?,
+          result = ?,
+          resultAt = ?,
+          columnOrder = ?,
+          updatedAt = ?,
+          version = version + 1
+        WHERE id = ?
+      `).run(JSON.stringify(updatedRun), result ?? null, now, columnOrder, now, taskId);
+    }
+
+    const updatedRow = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as Record<string, unknown>;
+    return rowToTask(updatedRow);
+  }
+
+  async reconcileStaleRuns(maxAgeMs: number): Promise<KanbanTask[]> {
+    const now = Date.now();
+    const cutoff = now - maxAgeMs;
+
+    const rows = db.prepare(`
+      SELECT * FROM tasks
+      WHERE status = 'in-progress'
+        AND run IS NOT NULL
+        AND json_extract(run, '$.status') = 'running'
+        AND json_extract(run, '$.startedAt') < ?
+    `).all(cutoff) as Record<string, unknown>[];
+
+    const reconciled: KanbanTask[] = [];
+
+    for (const row of rows) {
+      const task = rowToTask(row);
+      const maxOrderRow = db.prepare(
+        'SELECT MAX(columnOrder) as maxOrder FROM tasks WHERE status = ? AND id != ?'
+      ).get('todo', task.id) as { maxOrder: number | null };
+      const columnOrder = (maxOrderRow?.maxOrder ?? -1) + 1;
+
+      const updatedRun = { ...task.run!, status: 'error', endedAt: now, error: 'stale run reconciled' };
+
+      db.prepare(`
+        UPDATE tasks SET
+          status = 'todo',
+          run = ?,
+          columnOrder = ?,
+          updatedAt = ?,
+          version = version + 1
+        WHERE id = ?
+      `).run(JSON.stringify(updatedRun), columnOrder, now, task.id);
+
+      const updatedRow = db.prepare('SELECT * FROM tasks WHERE id = ?').get(task.id) as Record<string, unknown>;
+      reconciled.push(rowToTask(updatedRow));
+    }
+
+    return reconciled;
+  }
+
+  async approveProposal(
+    id: string,
+    actor: TaskActor = 'operator',
+  ): Promise<{ proposal: KanbanProposal; task: KanbanTask }> {
+    const proposalRow = db.prepare('SELECT * FROM proposals WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    if (!proposalRow) throw new ProposalNotFoundError(id);
+
+    const proposal = rowToProposal(proposalRow);
+    if (proposal.status !== 'pending') throw new ProposalAlreadyResolvedError(proposal);
+
+    const now = Date.now();
+    const config = await this.getConfig();
+    let task: KanbanTask;
+
+    if (proposal.type === 'create') {
+      // Create task from proposal payload
+      const payload = canonicalizeProposalPayloadAssignee(proposal.payload);
+      const targetStatus = (payload.status as string) ?? config.defaults.status;
+      if (!isAllowedTaskStatus(targetStatus, config)) {
+        throw new InvalidTaskStatusError(targetStatus, getAllowedTaskStatuses(config));
+      }
+
+      const maxOrderRow = db.prepare(
+        'SELECT MAX(columnOrder) as maxOrder FROM tasks WHERE status = ?'
+      ).get(targetStatus) as { maxOrder: number | null };
+      const columnOrder = (maxOrderRow?.maxOrder ?? -1) + 1;
+
+      const existingIds = new Set(
+        db.prepare('SELECT id FROM tasks').all().map((r: unknown) => (r as { id: string }).id)
+      );
+      const title = typeof payload.title === 'string' && payload.title ? payload.title : 'untitled';
+      const assignee = payload.assignee == null
+        ? undefined
+        : canonicalizeKanbanAssignee(String(payload.assignee)) || undefined;
+
+      const taskId = uniqueSlugId(title, existingIds);
+      const newTask: KanbanTask = {
+        id: taskId,
+        title,
+        description: payload.description as string | undefined,
+        status: targetStatus as TaskStatus,
+        priority: (payload.priority as TaskPriority) ?? config.defaults.priority,
+        createdBy: proposal.proposedBy,
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+        sourceSessionKey: payload.sourceSessionKey as string | undefined,
+        assignee,
+        labels: (payload.labels as string[]) ?? [],
+        columnOrder,
+        model: payload.model as string | undefined,
+        thinking: payload.thinking as KanbanTask['thinking'],
+        dueAt: payload.dueAt as number | undefined,
+        estimateMin: payload.estimateMin as number | undefined,
+        feedback: [],
+      };
+
+      const taskRow = taskToRow(newTask);
+      const columns = Object.keys(taskRow).join(', ');
+      const placeholders = Object.keys(taskRow).map(() => '?').join(', ');
+      db.prepare(`INSERT INTO tasks (${columns}) VALUES (${placeholders})`).run(...Object.values(taskRow));
+      task = newTask;
+    } else {
+      // Update task from proposal payload
+      const payload = canonicalizeProposalPayloadAssignee(proposal.payload);
+      const taskId = payload.id as string;
+      const taskRow = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as Record<string, unknown> | undefined;
+      if (!taskRow) throw new TaskNotFoundError(taskId);
+
+      const existingTask = rowToTask(taskRow);
+      const ALLOWED_FIELDS = ['title', 'description', 'status', 'priority', 'assignee', 'labels', 'result'] as const;
+      const patch: Record<string, unknown> = {};
+      for (const key of ALLOWED_FIELDS) {
+        if (key in payload) patch[key] = payload[key];
+      }
+
+      let columnOrder = existingTask.columnOrder;
+      if (patch.status && patch.status !== existingTask.status) {
+        if (!isAllowedTaskStatus(String(patch.status), config)) {
+          throw new InvalidTaskStatusError(String(patch.status), getAllowedTaskStatuses(config));
+        }
+        const maxOrderRow = db.prepare(
+          'SELECT MAX(columnOrder) as maxOrder FROM tasks WHERE status = ? AND id != ?'
+        ).get(patch.status, taskId) as { maxOrder: number | null };
+        columnOrder = (maxOrderRow?.maxOrder ?? -1) + 1;
+      }
+
+      if (patch.assignee != null) {
+        patch.assignee = canonicalizeKanbanAssignee(String(patch.assignee)) || undefined;
+      }
+
+      const setClause = Object.keys(patch).map(k => `${k} = ?`).join(', ');
+      db.prepare(`UPDATE tasks SET ${setClause}, columnOrder = ?, updatedAt = ?, version = version + 1 WHERE id = ?`)
+        .run(...Object.values(patch), columnOrder, now, taskId);
+
+      const updatedRow = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as Record<string, unknown>;
+      task = rowToTask(updatedRow);
+    }
+
+    db.prepare(`
+      UPDATE proposals SET status = 'approved', resolvedAt = ?, resolvedBy = ?, resultTaskId = ?, version = version + 1 WHERE id = ?
+    `).run(now, actor, task.id, id);
+
+    const updatedProposalRow = db.prepare('SELECT * FROM proposals WHERE id = ?').get(id) as Record<string, unknown>;
+    return { proposal: rowToProposal(updatedProposalRow), task };
+  }
+
+  async rejectProposal(
+    id: string,
+    reason?: string,
+    actor: TaskActor = 'operator',
+  ): Promise<KanbanProposal> {
+    const proposalRow = db.prepare('SELECT * FROM proposals WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    if (!proposalRow) throw new ProposalNotFoundError(id);
+
+    const proposal = rowToProposal(proposalRow);
+    if (proposal.status !== 'pending') throw new ProposalAlreadyResolvedError(proposal);
+
+    const now = Date.now();
+    db.prepare(`
+      UPDATE proposals SET status = 'rejected', resolvedAt = ?, resolvedBy = ?, reason = ?, version = version + 1 WHERE id = ?
+    `).run(now, actor, reason ?? null, id);
+
+    const updatedRow = db.prepare('SELECT * FROM proposals WHERE id = ?').get(id) as Record<string, unknown>;
+    return rowToProposal(updatedRow);
+  }
+
+  async reset(): Promise<void> {
+    db.prepare('DELETE FROM tasks').run();
+    db.prepare('DELETE FROM proposals').run();
+    db.prepare('DELETE FROM config').run();
+    db.prepare('INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)').run('schemaVersion', String(CURRENT_SCHEMA_VERSION));
+  }
+}
+
+export const getKanbanStore = () => new KanbanStore();
