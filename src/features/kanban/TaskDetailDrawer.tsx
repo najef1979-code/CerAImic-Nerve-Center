@@ -57,10 +57,13 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onDelete, onExecute,
   const [editLabels, setEditLabels] = useState('');
   const [editAssignee, setEditAssignee] = useState('');
   const [editVersion, setEditVersion] = useState(0);
+  const [editStage, setEditStage] = useState('');
+  const [editProjectId, setEditProjectId] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [activeTab, setActiveTab] = useState<'overview' | 'details'>('overview');
   const drawerRef = useRef<HTMLDivElement>(null);
 
   /* Populate fields when task changes */
@@ -73,6 +76,8 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onDelete, onExecute,
       setEditLabels(task.labels.join(', '));
       setEditAssignee(task.assignee || '');
       setEditVersion(task.version);
+      setEditStage(task.stage || '');
+      setEditProjectId(task.projectId || '');
       setError(null);
       setDirty(false);
       setConfirmDelete(false);
@@ -114,6 +119,8 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onDelete, onExecute,
         labels,
         assignee: editAssignee.trim() || null,
         version: editVersion,
+        stage: editStage || undefined,
+        projectId: editProjectId.trim() || undefined,
       });
       setDirty(false);
     } catch (err) {
@@ -128,6 +135,8 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onDelete, onExecute,
           setEditLabels(latest.labels.join(', '));
           setEditAssignee(latest.assignee || '');
           setEditVersion(latest.version);
+          setEditStage(latest.stage || '');
+          setEditProjectId(latest.projectId || '');
         }
         setError('Task was modified elsewhere. Fields refreshed to latest version -- review and save again.');
         setDirty(false);
@@ -275,15 +284,41 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onDelete, onExecute,
               </button>
             </div>
 
-            <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-              {error && (
-                <div className="cockpit-note flex items-center gap-2 text-sm" data-tone="danger">
-                  <AlertTriangle size={12} />
-                  {error}
-                </div>
-              )}
+            {/* Tab navigation */}
+            <div className="flex border-b border-border/50 px-4">
+              <button
+                onClick={() => setActiveTab('overview')}
+                className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+                  activeTab === 'overview'
+                    ? 'border-b-2 border-primary text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Overview
+              </button>
+              <button
+                onClick={() => setActiveTab('details')}
+                className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+                  activeTab === 'details'
+                    ? 'border-b-2 border-primary text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Details
+              </button>
+            </div>
 
-              <div className="cockpit-surface p-4 space-y-4">
+            <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+              {activeTab === 'overview' && (
+                <>
+                  {error && (
+                    <div className="cockpit-note flex items-center gap-2 text-sm" data-tone="danger">
+                      <AlertTriangle size={12} />
+                      {error}
+                    </div>
+                  )}
+
+                  <div className="cockpit-surface p-4 space-y-4">
                 <div>
                   <label htmlFor="kb-title" className="cockpit-field-label mb-2 block">
                     Title
@@ -376,9 +411,47 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onDelete, onExecute,
                   </div>
                 </div>
               </div>
+                </>
+              )}
 
-              <div className="cockpit-note space-y-2">
-                <h4 className="cockpit-field-label">Metadata</h4>
+              {activeTab === 'details' && (
+                <>
+                  {/* Stage + ProjectId */}
+                  <div className="cockpit-surface p-4 space-y-4">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label htmlFor="kb-stage" className="cockpit-field-label mb-2 block">
+                          Stage
+                        </label>
+                        <select
+                          id="kb-stage"
+                          value={editStage}
+                          onChange={e => { setEditStage(e.target.value); markDirty(); }}
+                          className={selectClass}
+                        >
+                          <option value="">— None —</option>
+                          {['raw', 'proposal', 'investigating', 'accepted', 'deferred', 'not_accepted'].map(s => (
+                            <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="kb-project-id" className="cockpit-field-label mb-2 block">
+                          Project ID
+                        </label>
+                        <Input
+                          id="kb-project-id"
+                          value={editProjectId}
+                          onChange={e => { setEditProjectId(e.target.value); markDirty(); }}
+                          placeholder="e.g. nerve-update"
+                          className="cockpit-input h-11"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="cockpit-note space-y-2">
+                    <h4 className="cockpit-field-label">Metadata</h4>
                 <div className="space-y-1 text-[0.733rem] text-muted-foreground">
                   <div className="flex items-center gap-1.5">
                     <Clock size={10} />
@@ -452,6 +525,8 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onDelete, onExecute,
                     ))}
                   </div>
                 </div>
+              )}
+                </>
               )}
             </div>
 
