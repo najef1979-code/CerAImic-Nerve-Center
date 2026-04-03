@@ -642,7 +642,25 @@ class KanbanStoreBase {
   // Proposal operations
   async createProposal(proposal: Omit<KanbanProposal, 'version'>): Promise<KanbanProposal> {
     const now = Date.now();
-    const full: KanbanProposal = { ...proposal, version: 1 };
+    if (!proposal.id) {
+      // Generate unique proposal id
+      const existingIds = new Set(
+        db.prepare('SELECT id FROM proposals').all().map((r: unknown) => (r as { id: string }).id)
+      );
+      const base = `proposal-${now}`;
+      let id = base;
+      let counter = 1;
+      while (existingIds.has(id)) {
+        id = `${base}-${counter++}`;
+      }
+      proposal = { ...proposal, id };
+    }
+    const full: KanbanProposal = {
+      ...proposal,
+      proposedAt: proposal.proposedAt ?? now,
+      status: proposal.status ?? 'pending',
+      version: 1,
+    };
 
     db.prepare(`
       INSERT INTO proposals (id, type, payload, sourceSessionKey, proposedBy, proposedAt, status, version)

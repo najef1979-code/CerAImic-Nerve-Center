@@ -394,6 +394,8 @@ function pollSessionCompletion(
               payload: marker.payload,
               sourceSessionKey: identity.correlationKey,
               proposedBy: `agent:${identity.correlationKey}`,
+              proposedAt: Date.now(),
+              status: 'pending',
             });
           } catch (err) {
             console.warn(`[kanban] Failed to create proposal from marker:`, err);
@@ -538,6 +540,8 @@ function pollFallbackSessionCompletion(
               payload: marker.payload,
               sourceSessionKey: activeSessionKey,
               proposedBy: task.assignee ?? 'operator',
+              proposedAt: Date.now(),
+              status: 'pending',
             });
           } catch (err) {
             console.warn(`[kanban] Failed to create proposal from marker:`, err);
@@ -1025,7 +1029,7 @@ app.post('/api/kanban/proposals', rateLimitGeneral, async (c) => {
   }
 
   try {
-    const proposal = await store.createProposal({ type, payload: safePayload, sourceSessionKey, proposedBy });
+    const proposal = await store.createProposal({ type, payload: safePayload, sourceSessionKey, proposedBy, proposedAt: Date.now(), status: 'pending' });
     return c.json(proposal, 201);
   } catch (err) {
     const invalidStatusResponse = handleInvalidTaskStatusError(c, err);
@@ -1516,6 +1520,8 @@ app.post('/api/kanban/tasks/:id/complete', rateLimitGeneral, async (c) => {
           payload: marker.payload,
           sourceSessionKey: sessionKey,
           proposedBy: `agent:${sessionKey}`,
+          proposedAt: Date.now(),
+          status: 'pending',
         });
       } catch (err) {
         console.warn(`[kanban] Failed to create proposal from marker in complete:`, err);

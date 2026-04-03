@@ -551,7 +551,7 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onDelete, onExecute,
               <div className="flex items-center gap-2">
               {/* Workflow actions */}
               {(task.status === 'backlog' || task.status === 'todo') && onExecute && (
-                <Button size="xs" onClick={handleExecute} disabled={workflowLoading !== null}>
+                <Button size="xs" onClick={handleExecute} disabled={workflowLoading !== null || !editAssignee}>
                   {workflowLoading === 'execute' ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
                   Execute
                 </Button>
