@@ -14,6 +14,9 @@
 
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
 import { rateLimitGeneral } from '../middleware/rate-limit.js';
 import {
   getKanbanStore,
@@ -868,6 +871,111 @@ app.delete('/api/kanban/tasks/:id', rateLimitGeneral, async (c) => {
     return c.json({ ok: true });
   } catch (err) {
     if (err instanceof TaskNotFoundError) {
+      return c.json({ error: 'not_found', details: err.message }, 404);
+    }
+    throw err;
+  }
+});
+
+// GET /api/kanban/tasks/:id/attachments - list attachments
+app.get('/api/kanban/tasks/:id/attachments', rateLimitGeneral, async (c) => {
+  const store = getKanbanStore();
+  const id = c.req.param('id');
+
+  const attachments = await store.listAttachments(id);
+  return c.json({ items: attachments, total: attachments.length });
+});
+
+// POST /api/kanban/tasks/:id/attachments - upload attachment
+app.post('/api/kanban/tasks/:id/attachments', rateLimitGeneral, async (c) => {
+  const store = getKanbanStore();
+  const taskId = c.req.param('id');
+
+  // Verify task exists
+  try {
+    await store.getTask(taskId);
+  } catch {
+    return c.json({ error: 'not_found', details: 'Task not found' }, 404);
+  }
+
+  // Handle multipart form data
+  const formData = await c.req.parseBody({ all: true });
+  const file = formData['file'];
+
+  if (!file || !(file instanceof File)) {
+    return c.json({ error: 'validation_error', details: 'No file provided' }, 400);
+  }
+
+  const originalName = file.name || 'unknown';
+  const mimeType = file.type || 'application/octet-stream';
+  const size = file.size;
+
+  // Generate unique filename: uuid-originalName
+  const filename = `${crypto.randomUUID()}-${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const filePath = store.getAttachmentPath(taskId, filename);
+
+  // Ensure directory exists
+  const dir = path.dirname(filePath);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+  }
+
+  // Write file
+  const buffer = Buffer.from(await file.arrayBuffer());
+  fs.writeFileSync(filePath, buffer);
+
+  // Save to DB
+  const attachment = await store.addAttachment(taskId, {
+    filename,
+    originalName,
+    mimeType,
+    size,
+  });
+
+  return c.json(attachment, 201);
+});
+
+// GET /api/kanban/tasks/:id/attachments/:attachmentId/download - download attachment
+app.get('/api/kanban/tasks/:id/attachments/:attachmentId/download', rateLimitGeneral, async (c) => {
+  const store = getKanbanStore();
+  const taskId = c.req.param('id');
+  const attachmentId = c.req.param('attachmentId');
+
+  const attachments = await store.listAttachments(taskId);
+  const attachment = attachments.find(a => a.id === attachmentId);
+
+  if (!attachment) {
+    return c.json({ error: 'not_found', details: 'Attachment not found' }, 404);
+  }
+
+  const filePath = store.getAttachmentPath(taskId, attachment.filename);
+
+  if (!fs.existsSync(filePath)) {
+    return c.json({ error: 'not_found', details: 'File not found on disk' }, 404);
+  }
+
+  const fileBuffer = fs.readFileSync(filePath);
+
+  return c.body(fileBuffer, 200, {
+    'Content-Type': attachment.mimeType,
+    'Content-Disposition': `attachment; filename="${attachment.originalName}"`,
+    'Content-Length': String(attachment.size),
+  });
+});
+
+// DELETE /api/kanban/tasks/:id/attachments/:attachmentId - delete attachment
+app.delete('/api/kanban/tasks/:id/attachments/:attachmentId', rateLimitGeneral, async (c) => {
+  const store = getKanbanStore();
+  const taskId = c.req.param('id');
+  const attachmentId = c.req.param('attachmentId');
+
+  try {
+    await store.deleteAttachment(taskId, attachmentId);
+    return c.json({ ok: true });
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('not found')) {
       return c.json({ error: 'not_found', details: err.message }, 404);
     }
     throw err;

@@ -22,6 +22,7 @@ import { canonicalizeKanbanAssignee } from './kanban-assignee.js';
 const NERVE_DATA_DIR = process.env.NERVE_DATA_DIR || path.join(os.homedir(), '.nerve');
 const KANBAN_DIR = path.join(NERVE_DATA_DIR, 'kanban');
 const DB_PATH = path.join(KANBAN_DIR, 'kanban.db');
+const ATTACHMENTS_DIR = path.join(KANBAN_DIR, 'attachments');
 
 // Ensure directory exists
 try {
@@ -85,6 +86,18 @@ db.exec(`
     resultTaskId TEXT
   );
 
+  -- Attachments table
+  CREATE TABLE IF NOT EXISTS attachments (
+    id TEXT PRIMARY KEY,
+    taskId TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    originalName TEXT NOT NULL,
+    mimeType TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    uploadedAt INTEGER NOT NULL,
+    FOREIGN KEY (taskId) REFERENCES tasks(id) ON DELETE CASCADE
+  );
+
   -- Config table (single-row key-value store)
   CREATE TABLE IF NOT EXISTS config (
     key TEXT PRIMARY KEY,
@@ -100,6 +113,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_tasks_updatedAt ON tasks(updatedAt);
   CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status);
   CREATE INDEX IF NOT EXISTS idx_proposals_proposedBy ON proposals(proposedBy);
+  CREATE INDEX IF NOT EXISTS idx_attachments_taskId ON attachments(taskId);
 `);
 
 // Initialize schema version
@@ -184,6 +198,16 @@ interface KanbanProposal {
   resolvedBy?: TaskActor;
   reason?: string;
   resultTaskId?: string;
+}
+
+interface KanbanAttachment {
+  id: string;
+  taskId: string;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  uploadedAt: number;
 }
 
 export interface TaskFilters {
@@ -342,6 +366,18 @@ function rowToProposal(row: Record<string, unknown>): KanbanProposal {
     resolvedBy: row.resolvedBy as TaskActor | undefined,
     reason: row.reason as string | undefined,
     resultTaskId: row.resultTaskId as string | undefined,
+  };
+}
+
+function rowToAttachment(row: Record<string, unknown>): KanbanAttachment {
+  return {
+    id: row.id as string,
+    taskId: row.taskId as string,
+    filename: row.filename as string,
+    originalName: row.originalName as string,
+    mimeType: row.mimeType as string,
+    size: row.size as number,
+    uploadedAt: row.uploadedAt as number,
   };
 }
 
@@ -534,6 +570,18 @@ class KanbanStoreBase {
   }
 
   async deleteTask(id: string): Promise<void> {
+    // Delete attachment files from disk
+    const taskAttachmentsDir = path.join(ATTACHMENTS_DIR, id);
+    try {
+      if (fs.existsSync(taskAttachmentsDir)) {
+        fs.rmSync(taskAttachmentsDir, { recursive: true, force: true });
+      }
+    } catch (err) {
+      console.warn(`[kanban] Failed to delete attachment directory for task ${id}:`, err);
+    }
+    // Delete attachment records (FK cascade would handle this, but be explicit)
+    db.prepare('DELETE FROM attachments WHERE taskId = ?').run(id);
+    // Delete the task
     db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
   }
 
@@ -707,6 +755,64 @@ class KanbanStoreBase {
     const row = db.prepare('SELECT * FROM proposals WHERE id = ?').get(id) as Record<string, unknown> | undefined;
     if (!row) throw new Error(`Proposal not found: ${id}`);
     return rowToProposal(row);
+  }
+
+  // ── Attachments ──────────────────────────────────────────────────────
+
+  async listAttachments(taskId: string): Promise<KanbanAttachment[]> {
+    const rows = db.prepare(
+      'SELECT * FROM attachments WHERE taskId = ? ORDER BY uploadedAt DESC'
+    ).all(taskId) as Record<string, unknown>[];
+    return rows.map(rowToAttachment);
+  }
+
+  async addAttachment(taskId: string, attachment: {
+    filename: string;
+    originalName: string;
+    mimeType: string;
+    size: number;
+  }): Promise<KanbanAttachment> {
+    const id = crypto.randomUUID();
+    const uploadedAt = Date.now();
+    const taskAttachmentsDir = path.join(ATTACHMENTS_DIR, taskId);
+
+    // Ensure directory exists
+    try {
+      fs.mkdirSync(taskAttachmentsDir, { recursive: true });
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    }
+
+    db.prepare(`
+      INSERT INTO attachments (id, taskId, filename, originalName, mimeType, size, uploadedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, taskId, attachment.filename, attachment.originalName, attachment.mimeType, attachment.size, uploadedAt);
+
+    return { id, taskId, ...attachment, uploadedAt };
+  }
+
+  async deleteAttachment(taskId: string, attachmentId: string): Promise<void> {
+    const row = db.prepare(
+      'SELECT * FROM attachments WHERE id = ? AND taskId = ?'
+    ).get(attachmentId, taskId) as Record<string, unknown> | undefined;
+    if (!row) {
+      throw new Error(`Attachment not found: ${attachmentId}`);
+    }
+
+    const filePath = path.join(ATTACHMENTS_DIR, taskId, row.filename as string);
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (err) {
+      console.warn(`[kanban] Failed to delete attachment file:`, err);
+    }
+
+    db.prepare('DELETE FROM attachments WHERE id = ?').run(attachmentId);
+  }
+
+  getAttachmentPath(taskId: string, filename: string): string {
+    return path.join(ATTACHMENTS_DIR, taskId, filename);
   }
 
   // Utility

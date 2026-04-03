@@ -96,3 +96,13 @@ export interface KanbanTask {
   /** Project this task belongs to — groups tasks under a project */
   projectId?: string;
 }
+
+export interface KanbanAttachment {
+  id: string;
+  taskId: string;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  uploadedAt: number;
+}

@@ -1,12 +1,12 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   X, Play, CheckCircle2, XCircle, Trash2, Save, Loader2,
-  Clock, User, Tag, AlertTriangle, MessageSquare, StopCircle,
+  Clock, User, Tag, AlertTriangle, MessageSquare, StopCircle, Paperclip,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useSessionContext } from '@/contexts/SessionContext';
-import { COLUMN_LABELS, type KanbanTask, type TaskStatus, type TaskPriority } from './types';
+import { COLUMN_LABELS, type KanbanTask, type KanbanAttachment, type TaskStatus, type TaskPriority } from './types';
 import type { UpdateTaskPayload, VersionConflictError } from './hooks/useKanban';
 import { AssigneeCombobox } from './components/AssigneeCombobox';
 import { buildAssigneeOptionsForEdit } from './lib/assigneeOptions';
@@ -64,6 +64,8 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onDelete, onExecute,
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'details'>('overview');
+  const [attachments, setAttachments] = useState<KanbanAttachment[]>([]);
+  const [uploadLoading, setUploadLoading] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
 
   /* Populate fields when task changes */
@@ -81,6 +83,46 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onDelete, onExecute,
       setError(null);
       setDirty(false);
       setConfirmDelete(false);
+    }
+  }, [task]);
+
+  /* Load attachments when task changes */
+  useEffect(() => {
+    if (!task) return;
+    fetch(`/api/kanban/tasks/${encodeURIComponent(task.id)}/attachments`)
+      .then(r => r.json())
+      .then(data => setAttachments(data.items || []))
+      .catch(() => setAttachments([]));
+  }, [task]);
+
+  /* Upload attachment */
+  const handleUpload = useCallback(async (file: File) => {
+    if (!task) return;
+    setUploadLoading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch(`/api/kanban/tasks/${encodeURIComponent(task.id)}/attachments`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (res.ok) {
+        const attachment = await res.json();
+        setAttachments(prev => [attachment, ...prev]);
+      }
+    } finally {
+      setUploadLoading(false);
+    }
+  }, [task]);
+
+  /* Delete attachment */
+  const handleDeleteAttachment = useCallback(async (attachmentId: string) => {
+    if (!task) return;
+    const res = await fetch(`/api/kanban/tasks/${encodeURIComponent(task.id)}/attachments/${attachmentId}`, {
+      method: 'DELETE',
+    });
+    if (res.ok) {
+      setAttachments(prev => prev.filter(a => a.id !== attachmentId));
     }
   }, [task]);
 
@@ -448,6 +490,67 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onDelete, onExecute,
                         />
                       </div>
                     </div>
+                  </div>
+
+                  {/* Attachments */}
+                  <div className="cockpit-surface p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="cockpit-field-label">
+                        <Paperclip size={10} className="mr-1 inline" />
+                        Attachments
+                      </h4>
+                      {uploadLoading && <Loader2 size={12} className="animate-spin text-muted-foreground" />}
+                    </div>
+
+                    {/* Upload zone */}
+                    <label className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border/60 bg-background/40 p-4 cursor-pointer hover:border-primary/50 transition-colors text-center">
+                      <input
+                        type="file"
+                        className="hidden"
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) handleUpload(file);
+                          e.target.value = '';
+                        }}
+                        disabled={uploadLoading}
+                      />
+                      <Paperclip size={16} className="text-muted-foreground mb-1" />
+                      <span className="text-xs text-muted-foreground">
+                        {uploadLoading ? 'Uploading…' : 'Click or drag to upload'}
+                      </span>
+                    </label>
+
+                    {/* Attachment list */}
+                    {attachments.length > 0 && (
+                      <div className="space-y-1.5">
+                        {attachments.map(attachment => (
+                          <div key={attachment.id} className="flex items-center justify-between rounded-lg border border-border/50 bg-background/50 px-3 py-2 text-xs">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Paperclip size={10} className="shrink-0 text-muted-foreground" />
+                              <a
+                                href={`/api/kanban/tasks/${encodeURIComponent(task.id)}/attachments/${attachment.id}/download`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="truncate hover:underline text-foreground"
+                                title={attachment.originalName}
+                              >
+                                {attachment.originalName}
+                              </a>
+                              <span className="shrink-0 text-muted-foreground text-[0.667rem]">
+                                ({(attachment.size / 1024).toFixed(1)} KB)
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => handleDeleteAttachment(attachment.id)}
+                              className="shrink-0 text-muted-foreground hover:text-destructive ml-2"
+                              title="Delete attachment"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="cockpit-note space-y-2">
