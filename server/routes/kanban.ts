@@ -24,7 +24,7 @@ import {
   InvalidTransitionError,
   ProposalNotFoundError,
   ProposalAlreadyResolvedError,
-} from '../lib/kanban-store.js';
+} from '../lib/kanban-sqlite.js';
 import { InvalidKanbanAssigneeError, resolveKanbanAssigneeRootSessionKey } from '../lib/kanban-assignee.js';
 import { invokeGatewayTool } from '../lib/gateway-client.js';
 import { gatewayRpcCall } from '../lib/gateway-rpc.js';
@@ -40,7 +40,7 @@ import type {
   TaskPriority,
   TaskActor,
   ProposalStatus,
-} from '../lib/kanban-store.js';
+} from '../lib/kanban-sqlite.js';
 
 const app = new Hono();
 

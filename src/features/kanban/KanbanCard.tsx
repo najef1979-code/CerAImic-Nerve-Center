@@ -3,7 +3,8 @@ import { Clock, Play, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { KanbanTask } from './types';
-import { IDEA_STAGE_BADGE, IDEA_STAGE_LABELS, getTaskPriorityLabel, getTaskPriorityTone, getTaskRunStatus, getTaskRunTone } from './tone';
+import { IDEA_STAGE_BADGE, IDEA_STAGE_LABELS } from './types';
+import { getTaskPriorityLabel, getTaskPriorityTone, getTaskRunStatus, getTaskRunTone } from './tone';
 
 /* ── Run status indicators ── */
 function RunBadge({ status }: { status: string }) {
