@@ -17,9 +17,11 @@ export interface KanbanFilters {
   priority: TaskPriority[];
   assignee: string;
   labels: string[];
+  stage: string;
+  projectId: string;
 }
 
-const EMPTY_FILTERS: KanbanFilters = { q: '', priority: [], assignee: '', labels: [] };
+const EMPTY_FILTERS: KanbanFilters = { q: '', priority: [], assignee: '', labels: [], stage: '', projectId: '' };
 
 /** Error with attached latest task from a 409 response */
 export interface VersionConflictError extends Error {
@@ -57,6 +59,8 @@ function buildQuery(filters: KanbanFilters): string {
   for (const pr of filters.priority) p.append('priority[]', pr);
   if (filters.assignee) p.set('assignee', filters.assignee);
   for (const l of filters.labels) p.append('label', l);
+  if (filters.stage) p.set('stage', filters.stage);
+  if (filters.projectId) p.set('projectId', filters.projectId);
   p.set('limit', '200');
   return p.toString();
 }

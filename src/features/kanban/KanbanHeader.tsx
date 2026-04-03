@@ -2,6 +2,7 @@ import { memo, useState, useCallback, useRef, useEffect } from 'react';
 import { Filter, Plus, X, Inbox } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { TaskStatus, TaskPriority } from './types';
+import { IDEA_STAGE_LABELS } from './types';
 import type { KanbanFilters } from './hooks/useKanban';
 import { ProposalInbox } from './ProposalInbox';
 import type { KanbanProposal } from './hooks/useProposals';
@@ -113,10 +114,10 @@ export const KanbanHeader = memo(function KanbanHeader({
   const clearFilters = useCallback(() => {
     clearTimeout(debounceRef.current);
     setSearchValue('');
-    onFiltersChange({ q: '', priority: [], assignee: '', labels: [] });
+    onFiltersChange({ q: '', priority: [], assignee: '', labels: [], stage: '', projectId: '' });
   }, [onFiltersChange]);
 
-  const hasActiveFilters = filters.q || filters.priority.length > 0 || filters.assignee || filters.labels.length > 0;
+  const hasActiveFilters = filters.q || filters.priority.length > 0 || filters.assignee || filters.labels.length > 0 || !!filters.stage || !!filters.projectId;
 
   return (
     <div className="shrink-0 space-y-3 border-b border-border/50 px-4 py-4">
@@ -232,6 +233,18 @@ export const KanbanHeader = memo(function KanbanHeader({
               onClick={() => togglePriority(p)}
             />
           ))}
+
+          <span className="ml-3 text-[0.733rem] font-medium text-foreground">Stage</span>
+          <select
+            value={filters.stage}
+            onChange={e => onFiltersChange({ ...filters, stage: e.target.value })}
+            className="h-8 rounded-full border border-border/70 bg-background/40 px-3 text-[0.733rem] font-medium text-muted-foreground hover:border-primary/24 hover:text-foreground cursor-pointer"
+          >
+            <option value="">All stages</option>
+            {Object.entries(IDEA_STAGE_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
 
           {hasActiveFilters && (
             <button

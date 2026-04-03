@@ -211,6 +211,8 @@ export interface TaskFilters {
   q?: string;
   limit?: number;
   offset?: number;
+  stage?: string;
+  projectId?: string;
 }
 
 // ── Version-conflict error ───────────────────────────────────────────
@@ -575,6 +577,12 @@ export class KanbanStore {
             (t.description?.toLowerCase().includes(q) ?? false) ||
             t.labels.some((l) => l.toLowerCase().includes(q)),
         );
+      }
+      if (filters.stage) {
+        tasks = tasks.filter((t) => t.stage === filters.stage);
+      }
+      if (filters.projectId) {
+        tasks = tasks.filter((t) => t.projectId === filters.projectId);
       }
 
       const statusOrder = getStatusOrderMap(data.config);

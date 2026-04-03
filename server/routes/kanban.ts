@@ -751,10 +751,12 @@ app.get('/api/kanban/tasks', rateLimitGeneral, async (c) => {
   const assignee = url.searchParams.get('assignee') || undefined;
   const label = url.searchParams.get('label') || undefined;
   const q = url.searchParams.get('q') || undefined;
+  const stage = url.searchParams.get('stage') || undefined;
+  const projectId = url.searchParams.get('projectId') || undefined;
   const limit = url.searchParams.get('limit') ? Number(url.searchParams.get('limit')) : undefined;
   const offset = url.searchParams.get('offset') ? Number(url.searchParams.get('offset')) : undefined;
 
-  const result = await store.listTasks({ status, priority, assignee, label, q, limit, offset });
+  const result = await store.listTasks({ status, priority, assignee, label, q, limit, offset, stage, projectId });
   return c.json(result);
 });
 
