@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useSessionContext } from '@/contexts/SessionContext';
 import type { TaskStatus, TaskPriority } from './types';
+import { IDEA_STAGE_LABELS } from './types';
 import type { CreateTaskPayload } from './hooks/useKanban';
 import { AssigneeCombobox } from './components/AssigneeCombobox';
 import { buildAssigneeOptions } from './lib/assigneeOptions';
@@ -30,6 +31,9 @@ const PRIORITY_OPTIONS: { value: TaskPriority; label: string }[] = [
   { value: 'low', label: 'Low' },
 ];
 
+const STAGE_OPTIONS = Object.entries(IDEA_STAGE_LABELS).map(([value, label]) => ({ value, label }));
+
+
 interface CreateTaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -44,6 +48,8 @@ export function CreateTaskDialog({ open, onOpenChange, onCreate }: CreateTaskDia
   const [priority, setPriority] = useState<TaskPriority>('normal');
   const [labelsRaw, setLabelsRaw] = useState('');
   const [assignee, setAssignee] = useState('');
+  const [stage, setStage] = useState('raw');
+  const [projectId, setProjectId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -66,6 +72,8 @@ export function CreateTaskDialog({ open, onOpenChange, onCreate }: CreateTaskDia
       setPriority('normal');
       setLabelsRaw('');
       setAssignee('');
+      setStage('raw');
+      setProjectId('');
       setError(null);
     }
   }, [open]);
@@ -93,6 +101,8 @@ export function CreateTaskDialog({ open, onOpenChange, onCreate }: CreateTaskDia
         priority,
         ...(labels.length > 0 ? { labels } : {}),
         ...(assignee ? { assignee } : {}),
+        ...(stage && stage !== 'raw' ? { stage } : {}),
+        ...(projectId.trim() ? { projectId: projectId.trim() } : {}),
       };
       await onCreate(payload);
       onOpenChange(false);
@@ -230,6 +240,37 @@ export function CreateTaskDialog({ open, onOpenChange, onCreate }: CreateTaskDia
               placeholder="Select assignee"
               noResultsText="No matching assignees"
               inline
+            />
+          </div>
+
+          {/* Stage */}
+          <div>
+            <label htmlFor="kb-new-stage" className="cockpit-field-label mb-2 block">
+              Idea Stage
+            </label>
+            <select
+              id="kb-new-stage"
+              value={stage}
+              onChange={e => setStage(e.target.value)}
+              className={selectClass}
+            >
+              {STAGE_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Project ID */}
+          <div>
+            <label htmlFor="kb-new-projectId" className="cockpit-field-label mb-2 block">
+              Project ID
+            </label>
+            <Input
+              id="kb-new-projectId"
+              value={projectId}
+              onChange={e => setProjectId(e.target.value)}
+              placeholder="e.g. nerve-update (optional)"
+              className="h-11"
             />
           </div>
         </div>

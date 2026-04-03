@@ -612,6 +612,8 @@ const createTaskSchema = z.object({
   thinking: thinkingSchema.optional(),
   dueAt: z.number().optional(),
   estimateMin: z.number().min(0).optional(),
+  stage: z.string().max(50).optional(),
+  projectId: z.string().max(200).optional(),
 });
 
 const updateTaskSchema = z.object({
@@ -631,6 +633,8 @@ const updateTaskSchema = z.object({
   resultAt: z.number().optional().nullable(),
   run: runLinkSchema.optional().nullable(),
   feedback: z.array(feedbackSchema).optional(),
+  stage: z.string().max(50).optional(),
+  projectId: z.string().max(200).optional(),
 });
 
 const reorderSchema = z.object({

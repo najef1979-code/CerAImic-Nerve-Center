@@ -34,6 +34,8 @@ export interface CreateTaskPayload {
   priority?: TaskPriority;
   labels?: string[];
   assignee?: string;
+  stage?: string;
+  projectId?: string;
 }
 
 export interface UpdateTaskPayload {
@@ -43,6 +45,8 @@ export interface UpdateTaskPayload {
   priority?: TaskPriority;
   labels?: string[];
   assignee?: string | null;
+  stage?: string;
+  projectId?: string;
   version: number;
 }
 

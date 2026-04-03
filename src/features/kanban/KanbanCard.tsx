@@ -3,7 +3,7 @@ import { Clock, Play, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { KanbanTask } from './types';
-import { getTaskPriorityLabel, getTaskPriorityTone, getTaskRunStatus, getTaskRunTone } from './tone';
+import { IDEA_STAGE_BADGE, IDEA_STAGE_LABELS, getTaskPriorityLabel, getTaskPriorityTone, getTaskRunStatus, getTaskRunTone } from './tone';
 
 /* ── Run status indicators ── */
 function RunBadge({ status }: { status: string }) {
@@ -129,9 +129,16 @@ function CardContent({
         </p>
       )}
 
-      {/* Row 3: labels */}
-      {task.labels.length > 0 && (
+      {/* Row 3: labels + stage badge */}
+      {(task.labels.length > 0 || task.stage) && (
         <div className="flex flex-wrap gap-1 mt-1.5 ml-4">
+          {task.stage && IDEA_STAGE_BADGE[task.stage] && (
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[0.667rem] font-semibold leading-none ${IDEA_STAGE_BADGE[task.stage].bg} ${IDEA_STAGE_BADGE[task.stage].text}`}
+            >
+              {IDEA_STAGE_BADGE[task.stage].label}
+            </span>
+          )}
           {task.labels.slice(0, 3).map((label, idx) => (
             <span
               key={`${label}-${idx}`}

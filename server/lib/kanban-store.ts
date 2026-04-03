@@ -121,6 +121,10 @@ export interface KanbanTask {
   estimateMin?: number;
   actualMin?: number;
   feedback: TaskFeedback[];
+  /** Idea funnel stage (raw, proposal, investigating, accepted, deferred, not_accepted) */
+  stage?: string;
+  /** Project this task belongs to — groups tasks under a project */
+  projectId?: string;
 }
 
 export interface KanbanBoardConfig {
@@ -620,6 +624,8 @@ export class KanbanStore {
     thinking?: 'off' | 'low' | 'medium' | 'high';
     dueAt?: number;
     estimateMin?: number;
+    stage?: string;
+    projectId?: string;
   }): Promise<KanbanTask> {
     return this.withStore(async () => {
       const data = await this.readRaw();
@@ -657,6 +663,8 @@ export class KanbanStore {
         thinking: input.thinking,
         dueAt: input.dueAt,
         estimateMin: input.estimateMin,
+        stage: input.stage,
+        projectId: input.projectId,
         feedback: [],
       };
 
@@ -690,6 +698,8 @@ export class KanbanStore {
         | 'resultAt'
         | 'run'
         | 'feedback'
+        | 'stage'
+        | 'projectId'
       >
     >,
     actor?: string,
